@@ -1,3 +1,4 @@
+import EconomyScreen from "./pages/EconomyScreen";
 import ChatScreen from "./pages/ChatScreen";
 import FarmerRegister from "./components/FarmerRegister";
 import ShambaSafi from "./components/ShambaSafi";
@@ -114,7 +115,7 @@ const [showRegister, setShowRegister] = useState(false);
 
         {/* ====== CHAT TAB - New ChatScreen ====== */}
         {tab === 1 && <ChatScreen />}
-        {tab === 2 && <div style={{padding:12}}><h2>🏛️ Economy Hub</h2><p>Cooperatives, Group Buy, Loyalty, Agent Network</p></div>}
+        {tab === 2 && <EconomyScreen />}
         {tab === 3 && <div style={{padding:12}}><h2>🚚 Delivery</h2>{RIDERS.map(r => <div key={r.id} style={{background:'white',borderRadius:12,padding:12,marginBottom:6}}><strong>{r.name}</strong> - {r.vehicle} - KES {r.price}</div>)}</div>}
         {tab === 4 && <div style={{padding:12,textAlign:'center'}}><h2>📍 Live Tracking</h2><div style={{background:'#E8F5E9',height:300,borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center'}}>🗺️ OpenStreetMap</div></div>}
         {tab === 5 && <div style={{padding:20,textAlign:'center'}}><h2>📍 Nakuru</h2><span style={{fontSize:80}}>⛅</span><h1 style={{fontSize:56}}>24°C</h1></div>}
