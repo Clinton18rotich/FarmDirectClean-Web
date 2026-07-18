@@ -1,3 +1,4 @@
+import FarmerRegister from "./components/FarmerRegister";
 import ShambaSafi from "./components/ShambaSafi";
 import React, { useState } from 'react';
 import { ALL_PRODUCTS, CATEGORIES, CHAT_FARMERS, RIDERS } from './data/farmData';
@@ -10,6 +11,7 @@ export default function App() {
   const [cart, setCart] = useState([]);
   const [showCart, setShowCart] = useState(false);
   const [showShamba, setShowShamba] = useState(false);
+const [showRegister, setShowRegister] = useState(false);
   
   // Chat state
   const [selectedFarmer, setSelectedFarmer] = useState(null);
@@ -72,6 +74,7 @@ export default function App() {
             <div style={{background:'#E8F5E9',margin:12,padding:12,borderRadius:12,display:'flex',gap:12,alignItems:'center'}}>
               <span style={{fontSize:40}}>🇰🇪</span>
               <div><strong>Karibu FarmDirect!</strong><p style={{fontSize:11}}>Fresh produce directly from farmers</p><p style={{fontSize:10,color:'#4CAF50'}}>🔒 ESCROW protected • M-Pesa</p></div>
+              <button onClick={() => setShowRegister(true)} style={{marginTop:8,background:"#FF6F00",color:"white",border:"none",padding:"8px 16px",borderRadius:20,fontSize:12,fontWeight:"bold",cursor:"pointer",width:"100%"}}>👨‍🌾 Register as Farmer - List Your Products</button>
             </div>
 
             <div style={{background:'white',margin:'0 12px',padding:12,borderRadius:12,display:'flex',alignItems:'center',gap:8,border:'1px solid #ddd'}}>
@@ -99,7 +102,7 @@ export default function App() {
                   <p style={{fontWeight:'bold',fontSize:16,color:'#4CAF50',margin:'4px 0'}}>KES {p.price.toLocaleString()}</p>
                   <div style={{display:'flex',gap:4}}>
                     <button style={{background:'none',border:'1px solid #ddd',padding:'4px 8px',borderRadius:4,fontSize:10,cursor:'pointer'}}>⭐ Reviews</button>
-                    <button onClick={() => window.open(`tel:+${p.phone}`)} style={{background:'none',border:'1px solid #ddd',padding:'4px 8px',borderRadius:4,fontSize:10,cursor:'pointer'}}>📞 Call</button>
+                    <button onClick={() => {if(confirm("⚠️ IMPORTANT: Never send money outside FarmDirect. Always use in-app ESCROW payment.\n\nDo you still want to call?")) window.open(`tel:+${p.phone}`)}} style={{background:'none',border:'1px solid #ddd',padding:'4px 8px',borderRadius:4,fontSize:10,cursor:'pointer'}}>📞 Call</button>
                   </div>
                 </div>
                 <button onClick={() => addToCart(p)} style={{background:'#4CAF50',color:'white',border:'none',padding:'8px 14px',borderRadius:8,cursor:'pointer',fontWeight:'bold'}}>Add</button>
@@ -176,6 +179,7 @@ export default function App() {
 
       {!selectedFarmer && <button onClick={() => setShowShamba(true)} style={{position:"fixed",bottom:80,right:16,background:"#FF6F00",color:"white",border:"none",width:56,height:56,borderRadius:"50%",fontSize:28,cursor:"pointer",boxShadow:"0 4px 15px rgba(0,0,0,.3)",zIndex:99}}>🛡️</button>}
       {showShamba && <ShambaSafi onClose={() => setShowShamba(false)} />}
+      {showRegister && <FarmerRegister onClose={() => setShowRegister(false)} onRegister={(data) => { console.log("Farmer registered:", data); alert("✅ Registration submitted! Your products will be reviewed within 24 hours."); }} />}
       {/* BOTTOM NAV - 7 TABS MATCHING ANDROID */}
       {!selectedFarmer && (
         <nav style={{position:'fixed',bottom:0,width:'100%',maxWidth:450,background:'#4CAF50',display:'flex',justifyContent:'space-around',padding:'8px 0 10px',zIndex:100}}>
