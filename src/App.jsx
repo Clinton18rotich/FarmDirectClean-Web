@@ -1,3 +1,4 @@
+import ChatScreen from "./pages/ChatScreen";
 import FarmerRegister from "./components/FarmerRegister";
 import ShambaSafi from "./components/ShambaSafi";
 import React, { useState } from 'react';
@@ -111,52 +112,8 @@ const [showRegister, setShowRegister] = useState(false);
           </div>
         )}
 
-        {/* ====== CHAT TAB ====== */}
-        {tab === 1 && !selectedFarmer && (
-          <div style={{padding:12}}>
-            <div style={{background:'#E8F5E9',padding:12,borderRadius:12,marginBottom:12}}><strong>💬 Chat with farmers</strong><p style={{fontSize:12,color:'#4CAF50'}}>📸 Photos • ⭐ Ratings • Tap to chat</p></div>
-            {CHAT_FARMERS.map(f => {
-              const saved = (() => { try { return JSON.parse(localStorage.getItem(`chat_${f.id}`) || '[]'); } catch(e) { return []; } })();
-              const last = saved[saved.length - 1];
-              return (
-                <div key={f.id} onClick={() => selectFarmer(f)} style={{background:'white',borderRadius:12,padding:12,marginBottom:6,display:'flex',alignItems:'center',gap:12,cursor:'pointer'}}>
-                  <div style={{width:50,height:50,background:'#E8F5E9',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24}}>{f.image}</div>
-                  <div style={{flex:1}}><strong>{f.name}</strong><p style={{fontSize:12,color:'#4CAF50',margin:0}}>{f.product}</p><p style={{fontSize:10,color:'gray',margin:0}}>{f.location}</p></div>
-                  <span style={{fontSize:20,color:'#4CAF50'}}>💬</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* ====== CHAT CONVERSATION ====== */}
-        {selectedFarmer && (
-          <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'#F5F7FA',zIndex:300,display:'flex',flexDirection:'column',maxWidth:450,margin:'0 auto'}}>
-            <div style={{background:'#4CAF50',color:'white',padding:12,display:'flex',alignItems:'center',gap:10}}>
-              <button onClick={() => setSelectedFarmer(null)} style={{background:'none',border:'none',color:'white',fontSize:20,cursor:'pointer'}}>←</button>
-              <div style={{width:35,height:35,background:'white',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>{selectedFarmer.image}</div>
-              <div style={{flex:1}}><strong>{selectedFarmer.name}</strong></div>
-              <button onClick={() => window.open(`tel:+${selectedFarmer.phone}`)} style={{background:'none',border:'none',fontSize:20,cursor:'pointer'}}>📞</button>
-            </div>
-            <div style={{flex:1,overflowY:'auto',padding:12}}>
-              {(messages[selectedFarmer.id] || []).length === 0 && <p style={{textAlign:'center',color:'gray',padding:40}}>Start a conversation! 💬</p>}
-              {(messages[selectedFarmer.id] || []).map((m, i) => (
-                <div key={i} style={{display:'flex',justifyContent:m.isMe?'flex-end':'flex-start',margin:'4px 0'}}>
-                  <div style={{maxWidth:'75%',padding:'10px 14px',borderRadius:12,background:m.isMe?'#4CAF50':'#F5F5F5',color:m.isMe?'white':'#333',borderBottomRightRadius:m.isMe?4:12,borderBottomLeftRadius:m.isMe?12:4}}>
-                    <p style={{margin:0,fontSize:14}}>{m.text}</p>
-                    <span style={{fontSize:9,opacity:.7,display:'block',marginTop:4}}>{new Date(m.time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div style={{display:'flex',alignItems:'center',padding:8,gap:8,background:'white',borderTop:'1px solid #ddd'}}>
-              <input value={msgText} onChange={e => setMsgText(e.target.value)} placeholder="Type a message..." onKeyDown={e => e.key === 'Enter' && sendMsg()} style={{flex:1,padding:10,borderRadius:24,border:'1px solid #ddd',outline:'none',fontSize:14}} />
-              <button onClick={sendMsg} style={{background:'#4CAF50',color:'white',border:'none',width:40,height:40,borderRadius:'50%',cursor:'pointer',fontSize:18}}>➤</button>
-            </div>
-          </div>
-        )}
-
-        {/* ====== OTHER TABS ====== */}
+        {/* ====== CHAT TAB - New ChatScreen ====== */}
+        {tab === 1 && <ChatScreen />}
         {tab === 2 && <div style={{padding:12}}><h2>🏛️ Economy Hub</h2><p>Cooperatives, Group Buy, Loyalty, Agent Network</p></div>}
         {tab === 3 && <div style={{padding:12}}><h2>🚚 Delivery</h2>{RIDERS.map(r => <div key={r.id} style={{background:'white',borderRadius:12,padding:12,marginBottom:6}}><strong>{r.name}</strong> - {r.vehicle} - KES {r.price}</div>)}</div>}
         {tab === 4 && <div style={{padding:12,textAlign:'center'}}><h2>📍 Live Tracking</h2><div style={{background:'#E8F5E9',height:300,borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center'}}>🗺️ OpenStreetMap</div></div>}
