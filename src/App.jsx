@@ -4,7 +4,8 @@ import EconomyScreen from "./pages/EconomyScreen";
 import ChatScreen from "./pages/ChatScreen";
 import FarmerRegister from "./components/FarmerRegister";
 import ShambaSafi from "./components/ShambaSafi";
-import React, { useState } from 'react';
+import BusinessDashboard from "./pages/BusinessDashboard";  // ← NEW
+import React, { useState, useEffect } from 'react';         // ← added useEffect
 import { ALL_PRODUCTS, CATEGORIES, CHAT_FARMERS, RIDERS } from './data/farmData';
 import './App.css';
 
@@ -15,20 +16,42 @@ export default function App() {
   const [cart, setCart] = useState([]);
   const [showCart, setShowCart] = useState(false);
   const [showShamba, setShowShamba] = useState(false);
-const [showRegister, setShowRegister] = useState(false);
-  
+  const [showRegister, setShowRegister] = useState(false);
+  const [showBusiness, setShowBusiness] = useState(false);    // ← NEW: owner dashboard
+  const [logoTaps, setLogoTaps] = useState(0);                // ← NEW: tap counter
+
   // Chat state
   const [selectedFarmer, setSelectedFarmer] = useState(null);
   const [messages, setMessages] = useState({});
   const [msgText, setMsgText] = useState('');
+
+  // NEW: Check URL for ?admin=1
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('admin') === '1') {
+      setShowBusiness(true);
+    }
+  }, []);
+
+  // NEW: 5-tap on logo opens business dashboard
+  const handleLogoTap = () => {
+    const next = logoTaps + 1;
+    if (next >= 5) {
+      setShowBusiness(true);
+      setLogoTaps(0);
+    } else {
+      setLogoTaps(next);
+      setTimeout(() => setLogoTaps(0), 2000); // reset after 2s
+    }
+  };
 
   const addToCart = (p) => {
     const e = cart.find(c => c.id === p.id);
     e ? setCart(cart.map(c => c.id === p.id ? {...c, qty: c.qty + 1} : c)) : setCart([...cart, {...p, qty: 1}]);
   };
 
-  const filtered = ALL_PRODUCTS.filter(p => 
-    (cat === 'All' || p.category === cat) && 
+  const filtered = ALL_PRODUCTS.filter(p =>
+    (cat === 'All' || p.category === cat) &&
     (!search || p.name.toLowerCase().includes(search.toLowerCase()) || p.farmer.toLowerCase().includes(search.toLowerCase()))
   );
 
@@ -46,6 +69,25 @@ const [showRegister, setShowRegister] = useState(false);
     setMsgText('');
   };
 
+  // NEW: If business dashboard is open, show it full-screen
+  if (showBusiness) {
+    return (
+      <div className="app" style={{ background: '#F5F7FA', minHeight: '100vh' }}>
+        <button 
+          onClick={() => setShowBusiness(false)}
+          style={{
+            position: 'fixed', top: 12, right: 12, zIndex: 100,
+            background: '#fff', border: '1px solid #ddd', borderRadius: 20,
+            padding: '6px 14px', cursor: 'pointer', fontSize: 12, fontWeight: 'bold'
+          }}
+        >
+          ← Back to App
+        </button>
+        <BusinessDashboard />
+      </div>
+    );
+  }
+
   const tabs = [
     { icon:'🏠', label:'Home' },
     { icon:'💬', label:'Chat' },
@@ -58,11 +100,17 @@ const [showRegister, setShowRegister] = useState(false);
 
   return (
     <div className="app">
-      {/* HEADER - matches Android TopAppBar */}
+      {/* HEADER */}
       {!selectedFarmer && (
         <header style={{background:'#4CAF50',color:'white',padding:'12px 16px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
           <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
-            <div style={{width:36,height:36,background:'white',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>🌱</div>
+            {/* NEW: logo tap handler */}
+            <div 
+              onClick={handleLogoTap}
+              style={{width:36,height:36,background:'white',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,cursor:'pointer',userSelect:'none'}}
+            >
+              🌱
+            </div>
             <div><h1 style={{fontSize:18,margin:0}}>FarmDirect</h1><p style={{fontSize:10,margin:0,opacity:.8}}>73 products • Fresh from Kenyan farms</p></div>
           </div>
           <button onClick={() => setShowCart(true)} style={{background:'none',border:'none',color:'white',fontSize:20,cursor:'pointer',position:'relative'}}>
@@ -115,7 +163,6 @@ const [showRegister, setShowRegister] = useState(false);
           </div>
         )}
 
-        {/* ====== CHAT TAB - New ChatScreen ====== */}
         {tab === 1 && <ChatScreen />}
         {tab === 2 && <EconomyScreen />}
         {tab === 3 && <DeliveryScreen />}
@@ -141,7 +188,8 @@ const [showRegister, setShowRegister] = useState(false);
       {!selectedFarmer && <button onClick={() => setShowShamba(true)} style={{position:"fixed",bottom:80,right:16,background:"#FF6F00",color:"white",border:"none",width:56,height:56,borderRadius:"50%",fontSize:28,cursor:"pointer",boxShadow:"0 4px 15px rgba(0,0,0,.3)",zIndex:99}}>🛡️</button>}
       {showShamba && <ShambaSafi onClose={() => setShowShamba(false)} />}
       {showRegister && <FarmerRegister onClose={() => setShowRegister(false)} onRegister={(data) => { console.log("Farmer registered:", data); alert("✅ Registration submitted! Your products will be reviewed within 24 hours."); }} />}
-      {/* BOTTOM NAV - 7 TABS MATCHING ANDROID */}
+      
+      {/* BOTTOM NAV */}
       {!selectedFarmer && (
         <nav style={{position:'fixed',bottom:0,width:'100%',maxWidth:450,background:'#4CAF50',display:'flex',justifyContent:'space-around',padding:'8px 0 10px',zIndex:100}}>
           {tabs.map((t, i) => (
