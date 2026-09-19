@@ -102,3 +102,22 @@ export const RIDERS = [
   { id:1, name:'James Mwangi', vehicle:'Motorcycle', rating:4.8, price:300 },
   { id:2, name:'Sarah Akello', vehicle:'Pickup', rating:4.9, price:800 },
 ];
+
+export const SELLER_PAYMENT_INFO = {
+  'John Kimani':   { till: '4123456', pochi: '254712345678', paybill: '247247' },
+  'Grace Njeri':   { till: '4123457', pochi: '254722345678', paybill: '247247' },
+  'Peter Mwangi':  { till: '4123458', pochi: '254732345678', paybill: '247247' },
+  'Sarah Chebet':  { till: '4123459', pochi: '254742345678', paybill: '247247' },
+  'David Kiprono': { till: '4123460', pochi: '254752345678', paybill: '247247' },
+  'Mary Wanjiku':  { till: '4123461', pochi: '254782345678', paybill: '247247' },
+  'James Kiprop':  { till: '4123462', pochi: '254712345679', paybill: '247247' },
+  'Michael Otieno':{ till: '4123463', pochi: '254732345679', paybill: '247247' },
+  'Ann Wambui':    { till: '4123464', pochi: '254722345681', paybill: '247247' },
+  'James Kamau':   { till: '4123465', pochi: '254722345680', paybill: '247247' },
+};
+
+export function getSellerPaymentInfo(farmerName) {
+  return SELLER_PAYMENT_INFO[farmerName] || {
+    till: '4123456', pochi: '254712345678', paybill: '247247'
+  };
+}
