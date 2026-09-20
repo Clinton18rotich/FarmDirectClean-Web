@@ -344,22 +344,44 @@ function getLivestock(passportId) {
 function reportStolen(passportId, report) {
   const animal = livestock.get(passportId);
   if (!animal) return null;
+  if (animal.isReportedStolen) return { error: 'Already reported stolen' };
+  if (animal.status === 'dead') return { error: 'Cannot report deceased animal as stolen' };
 
   animal.isReportedStolen = true;
   animal.status = 'stolen';
   animal.theftReport = {
-    reportedBy: report.reportedBy,
+    passportId,
+    reportedBy: report.reportedBy || animal.ownerName,
     reportedAt: new Date().toISOString(),
     description: report.description || '',
     location: report.location || animal.location,
-    contactPhone: report.contactPhone,
+    contactPhone: report.contactPhone || animal.ownerPhone,
+    bounty: report.bounty || null,
   };
 
-  // Simulated: notify slaughterhouses
-  console.log('🚨 THEFT REPORTED:', passportId, '— Slaughterhouses notified');
-
   persist();
+  console.log('🚨 THEFT REPORTED:', passportId, '|', animal.type, animal.breed);
+
   return animal;
+}
+
+/**
+ * Trigger theft alert broadcast (called from route, async)
+ */
+async function triggerTheftBroadcast(passportId, entities) {
+  const animal = livestock.get(passportId);
+  if (!animal || !animal.theftReport) return null;
+
+  const theftAlert = require('./theftAlert');
+  const result = await theftAlert.broadcastTheftAlert(animal, animal.theftReport, entities);
+
+  // Store theftId on animal for reference
+  animal.theftReport.theftId = result.theftId;
+  animal.theftReport.alertsSent = result.totalAlerts;
+  animal.theftReport.alertSummary = result.summary;
+  persist();
+
+  return result;
 }
 
 /**
@@ -1529,3 +1551,5 @@ module.exports.recordHomeSlaughter = recordHomeSlaughter;
 module.exports.getHomeSlaughterRecord = getHomeSlaughterRecord;
 module.exports.listHomeSlaughters = listHomeSlaughters;
 module.exports.getHomeSlaughterStats = getHomeSlaughterStats;
+
+module.exports.triggerTheftBroadcast = triggerTheftBroadcast;

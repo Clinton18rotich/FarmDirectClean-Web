@@ -17,7 +17,14 @@ function persist() {
 }
 
 async function sendSms(to, message, options = {}) {
-  const normalized = to.startsWith('+') ? to : '+' + to;
+  // Don't normalize emergency short codes (999, 112, 911) or short codes (334)
+  const isShortCode = /^\d{1,4}$/.test(String(to).replace(/\D/g, ''));
+  let normalized;
+  if (isShortCode) {
+    normalized = String(to);
+  } else {
+    normalized = to.startsWith('+') ? to : '+' + to;
+  }
   const entry = {
     id: 'SMS-' + Date.now().toString(36).toUpperCase(),
     to: normalized,

@@ -164,16 +164,68 @@ router.get('/livestock/:passportId', (req, res) => {
   res.json({ success: true, livestock: animal });
 });
 
-router.post('/livestock/:passportId/report-stolen', (req, res) => {
-  const { reportedBy, description, location, contactPhone } = req.body;
-  const animal = shamba.reportStolen(req.params.passportId, {
-    reportedBy: reportedBy || 'Owner',
-    description,
-    location,
-    contactPhone: contactPhone ? normalizeKenyaPhone(contactPhone) : null,
-  });
-  if (!animal) return res.status(404).json({ success: false, message: 'Animal not found' });
-  res.json({ success: true, livestock: animal });
+router.post('/livestock/:passportId/report-stolen', async (req, res) => {
+  try {
+    const { reportedBy, description, location, contactPhone, bounty } = req.body;
+    const animal = shamba.reportStolen(req.params.passportId, {
+      reportedBy: reportedBy || 'Owner',
+      description,
+      location,
+      contactPhone: contactPhone ? normalizeKenyaPhone(contactPhone) : null,
+      bounty,
+    });
+    if (!animal) return res.status(404).json({ success: false, message: 'Animal not found' });
+    if (animal.error) return res.status(400).json({ success: false, message: animal.error });
+
+    // Trigger theft alert broadcast
+    const slaughterhouseService = require('../services/shamba');
+    const allSlaughters = slaughterhouseService._slaughterhouses 
+      ? [...slaughterhouseService._slaughterhouses.values()] 
+      : [];
+    const meatHandlerService = require('../services/meatHandler');
+    const allHandlers = meatHandlerService._handlers 
+      ? [...meatHandlerService._handlers.values()] 
+      : [];
+
+    // Find farmers in same ward
+    const animalCounty = animal.location?.county;
+    const animalWard = animal.location?.ward;
+    const farmersInWard = [];
+    if (animalCounty && animalWard) {
+      const allFarmers = shamba._livestock ? [...new Set([...shamba._livestock.values()].map(a => a.ownerId))] : [];
+      // Simplified: use animal owners as farmers
+      const seen = new Set();
+      for (const a of (shamba._livestock ? shamba._livestock.values() : [])) {
+        if (seen.has(a.ownerId)) continue;
+        if (a.location?.ward === animalWard && a.location?.county === animalCounty && a.ownerId !== animal.ownerId) {
+          seen.add(a.ownerId);
+          farmersInWard.push({ name: a.ownerName, phone: a.ownerPhone, ward: a.location.ward });
+        }
+      }
+    }
+
+    let alertResult = null;
+    try {
+      alertResult = await shamba.triggerTheftBroadcast(animal.passportId, {
+        slaughterhouses: allSlaughters,
+        meatHandlers: allHandlers,
+        farmersInWard,
+      });
+    } catch (broadcastErr) {
+      console.error('⚠️  Alert broadcast failed:', broadcastErr.message);
+    }
+
+    res.json({ 
+      success: true, 
+      livestock: animal,
+      theftAlert: alertResult,
+      message: alertResult 
+        ? `Alerts sent: ${alertResult.totalAlerts} (${alertResult.summary.slaughterhouses} slaughterhouses, ${alertResult.summary.butcheries} butcheries, ${alertResult.summary.community} farmers, ${alertResult.summary.police} police)`
+        : 'Theft recorded. Alert broadcast pending.'
+    });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
 });
 
 router.post('/livestock/:passportId/vaccination', (req, res) => {
@@ -343,4 +395,30 @@ router.get('/home-slaughters/list', (req, res) => {
 
 router.get('/home-slaughters/stats', (req, res) => {
   res.json({ success: true, stats: shamba.getHomeSlaughterStats() });
+});
+
+// ═══════════════════════════════════════════════════
+// THEFT ALERT TRACKING
+// ═══════════════════════════════════════════════════
+
+const theftAlert = require('../services/theftAlert');
+
+router.get('/theft-alerts/list', (req, res) => {
+  res.json({ success: true, alerts: theftAlert.listActiveAlerts() });
+});
+
+router.get('/theft-alerts/stats', (req, res) => {
+  res.json({ success: true, stats: theftAlert.getStats() });
+});
+
+router.get('/theft-alerts/:passportId', (req, res) => {
+  const history = theftAlert.getAlertHistory(req.params.passportId);
+  res.json({ success: true, alerts: history });
+});
+
+router.post('/theft-alerts/:theftId/resolve', (req, res) => {
+  const { note, recoveredBy } = req.body;
+  const result = theftAlert.resolveAlert(req.params.theftId, { note, recoveredBy });
+  if (!result) return res.status(404).json({ success: false, message: 'Alert not found' });
+  res.json({ success: true, alert: result });
 });
