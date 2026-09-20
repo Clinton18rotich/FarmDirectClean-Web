@@ -54,6 +54,8 @@ export default function ShambaSafi({ onClose }) {
     { id: 'livestock', icon: '🐄', title: 'Module B: Livestock Passport', desc: 'UUID IDs • Theft protection • Lifecycle tracking', color: '#FF6F00' },
     { id: 'health', icon: '🏥', title: 'Module C: Health & Vet Network', desc: 'Daily SMS check • Vet dispatch (coming soon)', color: '#1565C0' },
     { id: 'meat', icon: '🥩', title: 'Module D: Meat Traceability', desc: 'QR codes • Full chain • Consumer scan', color: '#E65100' },
+    { id: 'slaughterhouse', icon: '🏭', title: 'Module E: Slaughterhouse Portal', desc: 'Register • Lookup • Slaughter • Meat tokens', color: '#7B1FA2' },
+    { id: 'butchery', icon: '🏪', title: 'Module F: Butchery Portal', desc: 'Receive meat • Sell • Track inventory', color: '#C2185B' },
   ];
 
   return (
@@ -118,6 +120,8 @@ export default function ShambaSafi({ onClose }) {
             {activeModule === 'livestock' && <LivestockModule myFarmer={myFarmer} myLivestock={myLivestock} reload={loadAll} />}
             {activeModule === 'health' && <ComingSoon name="Health & Vet Network" />}
             {activeModule === 'meat' && <ComingSoon name="Meat Traceability" />}
+            {activeModule === 'slaughterhouse' && <SlaughterhouseModule />}
+            {activeModule === 'butchery' && <ButcheryModule />}
           </div>
         )}
 
@@ -599,6 +603,447 @@ function LivestockModule({ myFarmer, myLivestock, reload }) {
     </div>
   );
 }
+
+
+// MODULE E: SLAUGHTERHOUSE PORTAL
+function SlaughterhouseModule() {
+  const [view, setView] = useState('home');
+  const [myFacility, setMyFacility] = useState(null);
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [regForm, setRegForm] = useState({ businessName: '', operatorName: '', operatorPhone: '', location: null, licenseNumber: '', capacityPerDay: 20 });
+  const [lookupId, setLookupId] = useState('');
+  const [lookupResult, setLookupResult] = useState(null);
+  const [lookupError, setLookupError] = useState(null);
+  const [requestTarget, setRequestTarget] = useState(null);
+  const [packagesCount, setPackagesCount] = useState(3);
+
+  useEffect(() => { loadAll(); }, []);
+
+  const loadAll = async () => {
+    try {
+      const saved = localStorage.getItem('slaughterhouseId');
+      const [facilities, reqs] = await Promise.all([
+        api.slaughterhouse.list().catch(() => ({ slaughterhouses: [] })),
+        api.slaughterhouse.listSlaughterRequests().catch(() => ({ requests: [] })),
+      ]);
+      setRequests(reqs.requests || []);
+      if (saved) {
+        const my = (facilities.slaughterhouses || []).find(f => f.id === saved);
+        if (my) setMyFacility(my);
+      }
+    } catch (err) { console.error(err); } finally { setLoading(false); }
+  };
+
+  const register = async () => {
+    try {
+      const result = await api.slaughterhouse.register(regForm);
+      if (!result.success) throw new Error(result.message);
+      localStorage.setItem('slaughterhouseId', result.slaughterhouse.id);
+      setMyFacility(result.slaughterhouse);
+      alert('Registered! ID: ' + result.slaughterhouse.id);
+      await loadAll();
+      setView('home');
+    } catch (err) { alert('Error: ' + err.message); }
+  };
+
+  const lookup = async () => {
+    setLookupResult(null); setLookupError(null);
+    try {
+      const result = await api.slaughterhouse.lookupAnimal(lookupId.trim().toUpperCase());
+      setLookupResult(result);
+    } catch (err) { setLookupError('Animal not found'); }
+  };
+
+  const requestSlaughter = async () => {
+    if (!myFacility) return alert('Register slaughterhouse first');
+    try {
+      const result = await api.slaughterhouse.requestSlaughter({ slaughterhouseId: myFacility.id, animalPassport: requestTarget.passportId, numberOfPackages: packagesCount });
+      if (!result.success) throw new Error(result.message);
+      alert('Request sent! Code: ' + result.request.approvalCode);
+      setRequestTarget(null);
+      await loadAll();
+      setView('requests');
+    } catch (err) { alert('Error: ' + err.message); }
+  };
+
+  const completeSlaughter = async (reqId, pkgs) => {
+    try {
+      const result = await api.slaughterhouse.completeSlaughter(reqId, { numberOfPackages: pkgs });
+      if (!result.success) throw new Error(result.message);
+      alert('Complete! ' + result.tokens.length + ' tokens generated.');
+      await loadAll();
+    } catch (err) { alert('Error: ' + err.message); }
+  };
+
+  if (loading) return <div style={{padding:40,textAlign:'center'}}>Loading...</div>;
+
+  if (view === 'home') {
+    const myRequests = myFacility ? requests.filter(r => r.slaughterhouseId === myFacility.id) : [];
+    const pending = myRequests.filter(r => r.status === 'pending_approval').length;
+    const approved = myRequests.filter(r => r.status === 'approved').length;
+    const completed = myRequests.filter(r => r.status === 'completed').length;
+    return (
+      <div>
+        <h4 style={{fontSize:16,marginBottom:12}}>Slaughterhouse Portal</h4>
+        {!myFacility ? (
+          <div>
+            <div style={{background:'#F3E5F5',padding:14,borderRadius:12,marginBottom:12}}>
+              <strong style={{fontSize:14,color:'#6A1B9A'}}>🏭 No facility yet?</strong>
+              <p style={{fontSize:12,color:'#666',margin:'4px 0 0'}}>Register in 2 minutes. Admin verifies your license.</p>
+            </div>
+            <button onClick={() => setView('register')} style={{...primaryBtn, background:'#7B1FA2'}}>➕ Add My Slaughterhouse</button>
+          </div>
+        ) : (
+          <div>
+            <div style={{background:'#F3E5F5',padding:14,borderRadius:12,marginBottom:12}}>
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                <strong style={{fontSize:14}}>{myFacility.businessName}</strong>
+                <span style={{background: myFacility.status === 'active' ? '#2E7D32' : '#FF9800',color:'white',padding:'2px 8px',borderRadius:6,fontSize:10,fontWeight:'bold'}}>{myFacility.status === 'active' ? 'ACTIVE' : 'PENDING'}</span>
+              </div>
+              <p style={{fontSize:11,color:'#666',margin:'2px 0'}}>{myFacility.location?.county}</p>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:12}}>
+              <div style={{background:'#FFF3E0',padding:10,borderRadius:10,textAlign:'center'}}><strong style={{fontSize:18,color:'#E65100'}}>{pending}</strong><p style={{fontSize:9,margin:0}}>Pending</p></div>
+              <div style={{background:'#E3F2FD',padding:10,borderRadius:10,textAlign:'center'}}><strong style={{fontSize:18,color:'#1565C0'}}>{approved}</strong><p style={{fontSize:9,margin:0}}>Approved</p></div>
+              <div style={{background:'#E8F5E9',padding:10,borderRadius:10,textAlign:'center'}}><strong style={{fontSize:18,color:'#2E7D32'}}>{completed}</strong><p style={{fontSize:9,margin:0}}>Completed</p></div>
+            </div>
+            <button onClick={() => setView('lookup')} style={{...primaryBtn, background:'#7B1FA2'}}>Lookup Animal</button>
+            <button onClick={() => setView('requests')} style={{...primaryBtn, background:'white', color:'#7B1FA2', border:'2px solid #7B1FA2'}}>Requests ({myRequests.length})</button>
+            <button onClick={() => setView('verify')} style={{...primaryBtn, background:'white', color:'#7B1FA2', border:'2px solid #7B1FA2'}}>Verify Meat</button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (view === 'register') {
+    return (
+      <div>
+        <h4 style={{fontSize:16,marginBottom:12}}>Register Slaughterhouse</h4>
+        <label style={labelStyle}>Business Name *</label>
+        <input value={regForm.businessName} onChange={e => setRegForm({...regForm, businessName: e.target.value})} placeholder="Nakuru Meat Processing" style={inputStyle} />
+        <label style={labelStyle}>Operator Name *</label>
+        <input value={regForm.operatorName} onChange={e => setRegForm({...regForm, operatorName: e.target.value})} placeholder="John Mwangi" style={inputStyle} />
+        <label style={labelStyle}>Operator Phone *</label>
+        <input value={regForm.operatorPhone} onChange={e => setRegForm({...regForm, operatorPhone: e.target.value})} onBlur={e => e.target.value && setRegForm({...regForm, operatorPhone: normalizeKenyaPhone(e.target.value)})} placeholder="0712345678" type="tel" style={inputStyle} />
+        <label style={labelStyle}>License *</label>
+        <input value={regForm.licenseNumber} onChange={e => setRegForm({...regForm, licenseNumber: e.target.value})} placeholder="MOA/SLH/2024/123" style={inputStyle} />
+        <label style={labelStyle}>Daily Capacity</label>
+        <input value={regForm.capacityPerDay} onChange={e => setRegForm({...regForm, capacityPerDay: parseInt(e.target.value) || 0})} type="number" style={inputStyle} />
+        <LocationPicker value={regForm.location} onChange={loc => setRegForm({...regForm, location: loc})} required label="Location" />
+        <div style={{display:'flex',gap:8,marginTop:12}}>
+          <button onClick={() => setView('home')} style={{...primaryBtn, background:'#F0F0F0', color:'#666', flex:1}}>Back</button>
+          <button onClick={register} disabled={!regForm.businessName || !regForm.operatorName || !regForm.operatorPhone || !regForm.licenseNumber || !regForm.location} style={{...primaryBtn, background:'#7B1FA2', flex:2}}>Register</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (view === 'lookup') {
+    return (
+      <div>
+        <h4 style={{fontSize:16,marginBottom:12}}>Lookup Animal</h4>
+        <input value={lookupId} onChange={e => setLookupId(e.target.value.toUpperCase())} placeholder="KE-COW-ABC123XY" style={{...inputStyle, fontFamily:'monospace'}} />
+        <button onClick={lookup} disabled={!lookupId} style={{...primaryBtn, background: lookupId ? '#7B1FA2' : '#ccc'}}>Lookup</button>
+        {lookupError && <div style={{background:'#FFEBEE',padding:12,borderRadius:10,marginTop:12}}><strong style={{color:'#C62828',fontSize:12}}>{lookupError}</strong></div>}
+        {lookupResult && (
+          <div style={{marginTop:12}}>
+            {lookupResult.blocked ? (
+              <div style={{background:'#FFEBEE',padding:14,borderRadius:12,border:'2px solid #C62828'}}>
+                <strong style={{color:'#C62828',fontSize:14}}>BLOCKED</strong>
+                <p style={{fontSize:12,margin:'6px 0',color:'#C62828'}}>{lookupResult.message}</p>
+              </div>
+            ) : (
+              <div>
+                <div style={{background:'#E8F5E9',padding:14,borderRadius:12,border:'2px solid #4CAF50',marginBottom:12}}>
+                  <strong style={{color:'#2E7D32',fontSize:14}}>ELIGIBLE</strong>
+                </div>
+                <div style={{background:'white',borderRadius:12,padding:14,border:'1px solid #E0E0E0',marginBottom:12}}>
+                  <p style={{fontSize:13,margin:'2px 0'}}><strong>{lookupResult.animal.type} - {lookupResult.animal.breed}</strong></p>
+                  <p style={{fontSize:11,margin:'2px 0'}}>Owner: {lookupResult.animal.ownerName}</p>
+                  <p style={{fontSize:11,margin:'2px 0'}}>Phone: {lookupResult.animal.ownerPhone}</p>
+                </div>
+                <button onClick={() => setRequestTarget(lookupResult.animal)} style={{...primaryBtn, background:'#7B1FA2'}}>Request Slaughter</button>
+              </div>
+            )}
+          </div>
+        )}
+        {requestTarget && (
+          <div style={{background:'#F3E5F5',borderRadius:12,padding:14,marginTop:12}}>
+            <strong style={{fontSize:14,color:'#6A1B9A'}}>Request Slaughter</strong>
+            <label style={labelStyle}>Packages</label>
+            <input type="number" value={packagesCount} onChange={e => setPackagesCount(parseInt(e.target.value) || 1)} style={inputStyle} />
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={() => setRequestTarget(null)} style={{...primaryBtn, background:'#F0F0F0', color:'#666', flex:1}}>Cancel</button>
+              <button onClick={requestSlaughter} style={{...primaryBtn, background:'#7B1FA2', flex:2}}>Send Request</button>
+            </div>
+          </div>
+        )}
+        <button onClick={() => setView('home')} style={{...primaryBtn, background:'none', color:'#666', marginTop:8}}>Back</button>
+      </div>
+    );
+  }
+
+  if (view === 'requests') {
+    const myRequests = myFacility ? requests.filter(r => r.slaughterhouseId === myFacility.id) : [];
+    return (
+      <div>
+        <h4 style={{fontSize:16,marginBottom:12}}>Requests</h4>
+        <button onClick={() => setView('home')} style={{...primaryBtn, background:'none', color:'#666', marginBottom:8}}>Back</button>
+        {myRequests.length === 0 && <p style={{textAlign:'center',color:'#999',padding:20}}>No requests</p>}
+        {myRequests.map(r => (
+          <div key={r.id} style={{background: r.status === 'completed' ? '#E8F5E9' : '#FFF3E0', borderRadius:12, padding:14, marginBottom:8, border:'1px solid #E0E0E0'}}>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+              <strong style={{fontSize:12,fontFamily:'monospace'}}>{r.id}</strong>
+              <span style={{background: r.status === 'completed' ? '#2E7D32' : '#FF9800', color:'white', padding:'2px 8px', borderRadius:6, fontSize:10}}>{r.status.toUpperCase()}</span>
+            </div>
+            <p style={{fontSize:12,margin:'2px 0'}}>{r.animalType} - {r.animalBreed}</p>
+            <p style={{fontSize:11,margin:'2px 0'}}>Owner: {r.ownerName}</p>
+            {r.status === 'pending_approval' && <div style={{background:'#FFF3E0',padding:8,borderRadius:8,marginTop:6,fontSize:11,color:'#E65100'}}>Waiting for owner</div>}
+            {r.status === 'approved' && <button onClick={() => completeSlaughter(r.id, 3)} style={{...primaryBtn, background:'#7B1FA2', marginTop:8}}>Complete Slaughter</button>}
+            {r.status === 'completed' && r.meatTokens && (
+              <div style={{marginTop:8}}>
+                {r.meatTokens.map(t => <p key={t} style={{fontSize:10,fontFamily:'monospace',margin:'2px 0',color:'#666'}}>{t}</p>)}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (view === 'verify') return <VerifyMeatView onBack={() => setView('home')} />;
+  return null;
+}
+
+// MODULE F: BUTCHERY PORTAL
+function ButcheryModule() {
+  const [view, setView] = useState('home');
+  const [myHandler, setMyHandler] = useState(null);
+  const [received, setReceived] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [regForm, setRegForm] = useState({ businessName: '', type: 'butchery', ownerName: '', ownerPhone: '', location: null, licenseNumber: '' });
+  const [tokenInput, setTokenInput] = useState('');
+  const [tokenResult, setTokenResult] = useState(null);
+  const [tokenError, setTokenError] = useState(null);
+
+  useEffect(() => { loadAll(); }, []);
+
+  const loadAll = async () => {
+    try {
+      const saved = localStorage.getItem('meatHandlerId');
+      const handlers = await api.meatHandler.list().catch(() => ({ handlers: [] }));
+      if (saved) {
+        const my = (handlers.handlers || []).find(h => h.id === saved);
+        if (my) {
+          setMyHandler(my);
+          const rec = await api.meatHandler.getReceived(saved).catch(() => ({ received: [] }));
+          setReceived(rec.received || []);
+        }
+      }
+    } catch (err) { console.error(err); } finally { setLoading(false); }
+  };
+
+  const register = async () => {
+    try {
+      const result = await api.meatHandler.register(regForm);
+      if (!result.success) throw new Error(result.message);
+      localStorage.setItem('meatHandlerId', result.handler.id);
+      setMyHandler(result.handler);
+      alert('Registered! ID: ' + result.handler.id);
+      await loadAll();
+      setView('home');
+    } catch (err) { alert('Error: ' + err.message); }
+  };
+
+  const receiveMeat = async () => {
+    setTokenResult(null); setTokenError(null);
+    try {
+      const verify = await api.meatHandler.getChain(tokenInput.trim().toUpperCase());
+      if (!verify.success) throw new Error('Not found');
+      setTokenResult(verify.chain);
+    } catch (err) { setTokenError('Token not found'); }
+  };
+
+  const confirmReceive = async () => {
+    try {
+      const result = await api.meatHandler.receiveMeat({ token: tokenInput.trim().toUpperCase(), handlerId: myHandler.id, notes: 'Received' });
+      if (!result.success) throw new Error(result.message);
+      alert('Received!');
+      setTokenInput(''); setTokenResult(null);
+      await loadAll();
+    } catch (err) { alert('Error: ' + err.message); }
+  };
+
+  const sellMeat = async (token) => {
+    try {
+      const result = await api.meatHandler.sellMeat({ token, handlerId: myHandler.id, notes: 'Sold' });
+      if (!result.success) throw new Error(result.message);
+      alert('Sold');
+      await loadAll();
+    } catch (err) { alert('Error: ' + err.message); }
+  };
+
+  if (loading) return <div style={{padding:40,textAlign:'center'}}>Loading...</div>;
+
+  if (view === 'home') {
+    return (
+      <div>
+        <h4 style={{fontSize:16,marginBottom:12}}>Butchery Portal</h4>
+        {!myHandler ? (
+          <div>
+            <div style={{background:'#FCE4EC',padding:14,borderRadius:12,marginBottom:12}}>
+              <strong style={{fontSize:14,color:'#C2185B'}}>🏪 No business yet?</strong>
+              <p style={{fontSize:12,color:'#666',margin:'4px 0 0'}}>Butchery, supermarket, restaurant, or hotel. Register in 2 minutes.</p>
+            </div>
+            <button onClick={() => setView('register')} style={{...primaryBtn, background:'#C2185B'}}>➕ Add My Business</button>
+          </div>
+        ) : (
+          <div>
+            <div style={{background:'#FCE4EC',padding:14,borderRadius:12,marginBottom:12}}>
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                <strong style={{fontSize:14}}>{myHandler.businessName}</strong>
+                <span style={{background: myHandler.status === 'active' ? '#2E7D32' : '#FF9800',color:'white',padding:'2px 8px',borderRadius:6,fontSize:10}}>{myHandler.status.toUpperCase()}</span>
+              </div>
+              <p style={{fontSize:11,color:'#666',margin:'2px 0'}}>{myHandler.type} - {myHandler.location?.county}</p>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:12}}>
+              <div style={{background:'#E8F5E9',padding:10,borderRadius:10,textAlign:'center'}}><strong style={{fontSize:18,color:'#2E7D32'}}>{myHandler.totalReceived || 0}</strong><p style={{fontSize:9,margin:0}}>Received</p></div>
+              <div style={{background:'#E3F2FD',padding:10,borderRadius:10,textAlign:'center'}}><strong style={{fontSize:18,color:'#1565C0'}}>{myHandler.totalSold || 0}</strong><p style={{fontSize:9,margin:0}}>Sold</p></div>
+              <div style={{background:'#FFF3E0',padding:10,borderRadius:10,textAlign:'center'}}><strong style={{fontSize:18,color:'#E65100'}}>{received.length}</strong><p style={{fontSize:9,margin:0}}>Stock</p></div>
+            </div>
+            <button onClick={() => setView('receive')} style={{...primaryBtn, background:'#C2185B'}}>Receive Meat</button>
+            <button onClick={() => setView('inventory')} style={{...primaryBtn, background:'white', color:'#C2185B', border:'2px solid #C2185B'}}>Inventory ({received.length})</button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (view === 'register') {
+    return (
+      <div>
+        <h4 style={{fontSize:16,marginBottom:12}}>Register Business</h4>
+        <label style={labelStyle}>Type</label>
+        <select value={regForm.type} onChange={e => setRegForm({...regForm, type: e.target.value})} style={{...inputStyle, background:'white'}}>
+          <option value="butchery">Butchery</option>
+          <option value="supermarket">Supermarket</option>
+          <option value="restaurant">Restaurant</option>
+          <option value="hotel">Hotel</option>
+        </select>
+        <label style={labelStyle}>Business Name *</label>
+        <input value={regForm.businessName} onChange={e => setRegForm({...regForm, businessName: e.target.value})} placeholder="Nakuru Fresh Butchery" style={inputStyle} />
+        <label style={labelStyle}>Owner Name *</label>
+        <input value={regForm.ownerName} onChange={e => setRegForm({...regForm, ownerName: e.target.value})} placeholder="Mary Wanjiku" style={inputStyle} />
+        <label style={labelStyle}>Owner Phone *</label>
+        <input value={regForm.ownerPhone} onChange={e => setRegForm({...regForm, ownerPhone: e.target.value})} onBlur={e => e.target.value && setRegForm({...regForm, ownerPhone: normalizeKenyaPhone(e.target.value)})} placeholder="0722334455" type="tel" style={inputStyle} />
+        <label style={labelStyle}>License *</label>
+        <input value={regForm.licenseNumber} onChange={e => setRegForm({...regForm, licenseNumber: e.target.value})} placeholder="MOA/BUT/2024/456" style={inputStyle} />
+        <LocationPicker value={regForm.location} onChange={loc => setRegForm({...regForm, location: loc})} required label="Location" />
+        <div style={{display:'flex',gap:8,marginTop:12}}>
+          <button onClick={() => setView('home')} style={{...primaryBtn, background:'#F0F0F0', color:'#666', flex:1}}>Back</button>
+          <button onClick={register} disabled={!regForm.businessName || !regForm.ownerName || !regForm.ownerPhone || !regForm.licenseNumber || !regForm.location} style={{...primaryBtn, background:'#C2185B', flex:2}}>Register</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (view === 'receive') {
+    return (
+      <div>
+        <h4 style={{fontSize:16,marginBottom:12}}>Receive Meat</h4>
+        <input value={tokenInput} onChange={e => setTokenInput(e.target.value.toUpperCase())} placeholder="MEAT-YAV42JVH" style={{...inputStyle, fontFamily:'monospace'}} />
+        <button onClick={receiveMeat} disabled={!tokenInput} style={{...primaryBtn, background: tokenInput ? '#C2185B' : '#ccc'}}>Verify Token</button>
+        {tokenError && <div style={{background:'#FFEBEE',padding:12,borderRadius:10,marginTop:12}}><strong style={{color:'#C62828',fontSize:12}}>{tokenError}</strong></div>}
+        {tokenResult && (
+          <div style={{marginTop:12,background:'#E8F5E9',padding:14,borderRadius:12,border:'2px solid #4CAF50'}}>
+            <strong style={{color:'#2E7D32',fontSize:13}}>Valid Token</strong>
+            <p style={{fontSize:11,margin:'6px 0'}}>{tokenResult.animalType} - {tokenResult.animalBreed}</p>
+            <p style={{fontSize:11,margin:'2px 0'}}>Farmer: {tokenResult.farmerName}</p>
+            <p style={{fontSize:11,margin:'2px 0'}}>From: {tokenResult.slaughterhouseName}</p>
+            <button onClick={confirmReceive} style={{...primaryBtn, background:'#C2185B', marginTop:12}}>Confirm Receipt</button>
+          </div>
+        )}
+        <button onClick={() => setView('home')} style={{...primaryBtn, background:'none', color:'#666'}}>Back</button>
+      </div>
+    );
+  }
+
+  if (view === 'inventory') {
+    return (
+      <div>
+        <h4 style={{fontSize:16,marginBottom:12}}>Inventory ({received.length})</h4>
+        <button onClick={() => setView('home')} style={{...primaryBtn, background:'none', color:'#666', marginBottom:8}}>Back</button>
+        {received.length === 0 && <p style={{textAlign:'center',color:'#999',padding:20}}>Empty</p>}
+        {received.map(m => (
+          <div key={m.token} style={{background:'#FFF8E1',borderRadius:12,padding:14,marginBottom:8,border:'1px solid #FFE082'}}>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+              <strong style={{fontSize:12,fontFamily:'monospace'}}>{m.token}</strong>
+              <span style={{background:'#2E7D32',color:'white',padding:'2px 8px',borderRadius:6,fontSize:10}}>IN STOCK</span>
+            </div>
+            <p style={{fontSize:12,margin:'2px 0'}}>{m.animalType} - {m.animalBreed}</p>
+            <p style={{fontSize:11,margin:'2px 0',color:'#666'}}>Farmer: {m.farmerName}</p>
+            <button onClick={() => sellMeat(m.token)} style={{...primaryBtn, background:'#C2185B', marginTop:8}}>Mark Sold</button>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return null;
+}
+
+// MEAT VERIFICATION VIEW
+function VerifyMeatView({ onBack }) {
+  const [token, setToken] = useState('');
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+
+  const verify = async () => {
+    setResult(null); setError(null);
+    try {
+      const r = await api.meatHandler.getChain(token.trim().toUpperCase());
+      if (!r.success) throw new Error('Not found');
+      setResult(r.chain);
+    } catch (err) { setError('Token not found'); }
+  };
+
+  return (
+    <div>
+      <h4 style={{fontSize:16,marginBottom:12}}>Verify Meat</h4>
+      <input value={token} onChange={e => setToken(e.target.value.toUpperCase())} placeholder="MEAT-YAV42JVH" style={{...inputStyle, fontFamily:'monospace'}} />
+      <button onClick={verify} disabled={!token} style={{...primaryBtn, background: token ? '#7B1FA2' : '#ccc'}}>Verify</button>
+      {error && <div style={{background:'#FFEBEE',padding:12,borderRadius:10,marginTop:12}}><strong style={{color:'#C62828',fontSize:12}}>{error}</strong></div>}
+      {result && (
+        <div style={{marginTop:12}}>
+          <div style={{background:'#E8F5E9',padding:14,borderRadius:12,border:'2px solid #4CAF50',marginBottom:12}}>
+            <strong style={{color:'#2E7D32',fontSize:14}}>VERIFIED</strong>
+          </div>
+          {result.sourceAnimal && (
+            <div style={{background:'white',borderRadius:12,padding:14,border:'1px solid #E0E0E0',marginBottom:8}}>
+              <strong style={{fontSize:12}}>Source Animal</strong>
+              <p style={{fontSize:11,margin:'4px 0'}}>{result.sourceAnimal.type} - {result.sourceAnimal.breed}</p>
+              <p style={{fontSize:11,margin:'2px 0',color:'#666'}}>Farmer: {result.sourceAnimal.farmer?.name}</p>
+            </div>
+          )}
+          {result.chain && (
+            <div style={{background:'white',borderRadius:12,padding:14,border:'1px solid #E0E0E0'}}>
+              <strong style={{fontSize:12}}>Chain</strong>
+              {result.chain.map((c, i) => (
+                <div key={i} style={{marginTop:6,fontSize:11}}>
+                  <strong>{i+1}. {c.holder?.toUpperCase()}:</strong> {c.name || 'Consumer'}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {onBack && <button onClick={onBack} style={{...primaryBtn, background:'none', color:'#666', marginTop:8}}>Back</button>}
+    </div>
+  );
+}
+
 
 function ComingSoon({ name }) {
   return (

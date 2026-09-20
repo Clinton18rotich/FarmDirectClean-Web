@@ -99,3 +99,44 @@ api.shamba.listHomeSlaughters = (filter = {}) => {
   return request(`/api/shamba/home-slaughters/list${params ? '?' + params : ''}`);
 };
 api.shamba.homeSlaughterStats = () => request('/api/shamba/home-slaughters/stats');
+
+// Slaughterhouse Portal
+api.slaughterhouse = {
+  register: (data) => request('/api/slaughterhouse/register', { method: 'POST', body: data }),
+  list: (filter = {}) => {
+    const params = new URLSearchParams(filter).toString();
+    return request(`/api/slaughterhouse/list${params ? '?' + params : ''}`);
+  },
+  get: (id) => request(`/api/slaughterhouse/${id}`),
+  verify: (id, data) => request(`/api/slaughterhouse/${id}/verify`, { method: 'POST', body: data }),
+  lookupAnimal: (passportId) => request(`/api/slaughterhouse/lookup/${passportId}`),
+  requestSlaughter: (data) => request('/api/slaughterhouse/slaughter/request', { method: 'POST', body: data }),
+  approveSlaughter: (id, code) => request(`/api/slaughterhouse/slaughter/${id}/approve`, { method: 'POST', body: { code } }),
+  rejectSlaughter: (id, reason) => request(`/api/slaughterhouse/slaughter/${id}/reject`, { method: 'POST', body: { reason } }),
+  completeSlaughter: (id, data) => request(`/api/slaughterhouse/slaughter/${id}/complete`, { method: 'POST', body: data }),
+  listSlaughterRequests: (filter = {}) => {
+    const params = new URLSearchParams(filter).toString();
+    return request(`/api/slaughterhouse/slaughter/list${params ? '?' + params : ''}`);
+  },
+  getSlaughterRequest: (id) => request(`/api/slaughterhouse/slaughter/${id}`),
+  verifyMeat: (token) => request(`/api/slaughterhouse/meat/verify/${token}`),
+  reportMeatFraud: (token, data) => request(`/api/slaughterhouse/meat/${token}/report`, { method: 'POST', body: data }),
+};
+
+// Meat Handler (Butchery/Supermarket)
+api.meatHandler = {
+  register: (data) => request('/api/meat-handler/register', { method: 'POST', body: data }),
+  list: (filter = {}) => {
+    const params = new URLSearchParams(filter).toString();
+    return request(`/api/meat-handler/list${params ? '?' + params : ''}`);
+  },
+  get: (id) => request(`/api/meat-handler/${id}`),
+  verify: (id, data) => request(`/api/meat-handler/${id}/verify`, { method: 'POST', body: data }),
+  types: () => request('/api/meat-handler/types'),
+  receiveMeat: (data) => request('/api/meat-handler/meat/receive', { method: 'POST', body: data }),
+  sellMeat: (data) => request('/api/meat-handler/meat/sell', { method: 'POST', body: data }),
+  returnMeat: (data) => request('/api/meat-handler/meat/return', { method: 'POST', body: data }),
+  getChain: (token) => request(`/api/meat-handler/meat/chain/${token}`),
+  getReceived: (id) => request(`/api/meat-handler/${id}/received`),
+  getSold: (id) => request(`/api/meat-handler/${id}/sold`),
+};
