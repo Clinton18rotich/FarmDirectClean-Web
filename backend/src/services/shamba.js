@@ -137,25 +137,147 @@ function listLand() {
 /**
  * Register a new animal with passport
  */
+
+/**
+ * Compute life stage from birth date + type + gender
+ */
+function computeLifeStage(animal) {
+  const ageInfo = computeAge(animal);
+  const ageMonths = ageInfo.months;
+  const gender = animal.gender;
+
+  const stages = {
+    'Cow':     { young: 'Calf',     teen: 'Weaner',    adult: gender === 'Male' ? 'Bull' : 'Cow' },
+    'Goat':    { young: 'Kid',      teen: 'Yearling',  adult: gender === 'Male' ? 'Buck' : 'Doe' },
+    'Sheep':   { young: 'Lamb',     teen: 'Yearling',  adult: gender === 'Male' ? 'Ram' : 'Ewe' },
+    'Pig':     { young: 'Piglet',   teen: 'Grower',    adult: gender === 'Male' ? 'Boar' : 'Sow' },
+    'Chicken': { young: 'Chick',    teen: 'Grower',    adult: gender === 'Male' ? 'Rooster' : 'Hen' },
+    'Camel':   { young: 'Calf',     teen: 'Yearling',  adult: 'Camel' },
+    'Donkey':  { young: 'Foal',     teen: 'Yearling',  adult: 'Donkey' },
+    'Rabbit':  { young: 'Kit',      teen: 'Young',     adult: 'Rabbit' },
+  };
+
+  const s = stages[animal.type] || { young: 'Newborn', teen: 'Young', adult: 'Adult' };
+  if (ageMonths < 12) return s.young;
+  if (ageMonths < 24) return s.teen;
+  return s.adult;
+}
+
+/**
+ * Compute age in months + human-readable
+ */
+function computeAge(animal) {
+  // Priority 1: explicit birthDate (newborns registered with birth date)
+  if (animal.birthDate) {
+    const months = Math.floor((Date.now() - new Date(animal.birthDate).getTime()) / (1000 * 60 * 60 * 24 * 30));
+    return { months, display: formatMonths(months), source: 'birthDate' };
+  }
+
+  // Priority 2: parse age string like "4 years", "18 months", "2 years 6 months"
+  if (animal.age) {
+    const parsed = parseAgeString(animal.age);
+    if (parsed) return { months: parsed, display: formatMonths(parsed), source: 'ageField' };
+  }
+
+  // Priority 3: fall back to registration date (may understate age)
+  if (animal.registeredAt) {
+    const months = Math.floor((Date.now() - new Date(animal.registeredAt).getTime()) / (1000 * 60 * 60 * 24 * 30));
+    return { months, display: formatMonths(months), source: 'registeredAt' };
+  }
+
+  return { months: 0, display: 'unknown', source: 'unknown' };
+}
+
+function formatMonths(months) {
+  if (months < 1) return 'less than 1 month';
+  if (months < 12) return months + ' month' + (months > 1 ? 's' : '');
+  const years = Math.floor(months / 12);
+  const extraMonths = months % 12;
+  return years + ' year' + (years > 1 ? 's' : '') + (extraMonths > 0 ? ' ' + extraMonths + ' months' : '');
+}
+
+function parseAgeString(str) {
+  if (!str) return null;
+  const s = String(str).toLowerCase();
+  let totalMonths = 0;
+  let matched = false;
+
+  const yearMatch = s.match(/(\d+)\s*year/);
+  if (yearMatch) { totalMonths += parseInt(yearMatch[1]) * 12; matched = true; }
+
+  const monthMatch = s.match(/(\d+)\s*month/);
+  if (monthMatch) { totalMonths += parseInt(monthMatch[1]); matched = true; }
+
+  const weekMatch = s.match(/(\d+)\s*week/);
+  if (weekMatch) { totalMonths += Math.floor(parseInt(weekMatch[1]) / 4); matched = true; }
+
+  const dayMatch = s.match(/(\d+)\s*day/);
+  if (dayMatch && !matched) { totalMonths += Math.floor(parseInt(dayMatch[1]) / 30); matched = true; }
+
+  return matched ? totalMonths : null;
+}
+
+/**
+ * Enrich an animal record with computed fields
+ */
+function enrichAnimal(animal) {
+  if (!animal) return null;
+  const age = computeAge(animal);
+  const stage = computeLifeStage(animal);
+  const isYoung = age.months < 12;
+
+  return {
+    ...animal,
+    currentLifeStage: stage,
+    ageMonths: age.months,
+    ageDisplay: age.display,
+    isYoung,
+    displayName: isYoung ? stage : `${stage} (${age.display})`,
+  };
+}
+
 function registerLivestock(data) {
   const passportId = generatePassportId(data.type);
+  const now = new Date().toISOString();
   
+  // If newborn, validate mother exists (if provided)
+  let mother = null;
+  if (data.motherPassport) {
+    mother = livestock.get(data.motherPassport);
+    if (!mother) {
+      return { error: 'Mother passport ' + data.motherPassport + ' not found' };
+    }
+  }
+  if (data.fatherPassport) {
+    const father = livestock.get(data.fatherPassport);
+    if (!father) {
+      return { error: 'Father passport ' + data.fatherPassport + ' not found' };
+    }
+  }
+
+  const isNewborn = !!data.isNewborn;
+  const birthDate = data.birthDate || (isNewborn ? now : null);
+
   const animal = {
     passportId,
     ownerId: data.ownerId,
     ownerName: data.ownerName,
     ownerPhone: data.ownerPhone,
     // Animal details
-    type: data.type,              // Cow, Goat, Sheep, etc.
+    type: data.type,
     breed: data.breed,
     age: data.age || null,
     color: data.color || null,
     gender: data.gender || null,
+    // ═══ NEW: Newborn fields ═══
+    isNewborn,
+    birthDate: birthDate,
+    motherPassport: data.motherPassport || null,
+    fatherPassport: data.fatherPassport || null,
+    birthWeight: data.birthWeight || null,
     // Location
     location: data.location,
-    // AI coat pattern (mock for now)
     aiCoat: '#' + Math.random().toString(16).substring(2, 8).toUpperCase(),
-    // Photo (later)
     photoUrl: data.photoUrl || null,
     // Status
     status: 'alive',
@@ -167,20 +289,38 @@ function registerLivestock(data) {
     ownershipHistory: [{
       ownerId: data.ownerId,
       ownerName: data.ownerName,
-      from: new Date().toISOString(),
+      from: now,
     }],
     // Theft tracking
     isReportedStolen: false,
     theftReport: null,
+    // Offspring tracking (for parents)
+    offspring: [],
     // Blockchain-lite
     recordHash: 'HASH-' + Math.random().toString(36).substring(2, 18).toUpperCase(),
-    registeredAt: new Date().toISOString(),
+    registeredAt: now,
   };
 
   livestock.set(passportId, animal);
+
+  // Update mother's offspring list
+  if (mother) {
+    if (!mother.offspring) mother.offspring = [];
+    mother.offspring.push({
+      passportId,
+      type: animal.type,
+      breed: animal.breed,
+      gender: animal.gender,
+      birthDate: birthDate,
+    });
+    livestock.set(data.motherPassport, mother);
+  }
+
   persist();
 
-  console.log('🐄 Livestock registered:', passportId, '|', data.type, data.breed);
+  console.log('🐄 Livestock registered:', passportId, '|', data.type, data.breed, isNewborn ? '(NEWBORN)' : '');
+  if (mother) console.log('   Mother:', data.motherPassport);
+
   return animal;
 }
 
@@ -408,6 +548,35 @@ function lookupAnimal(passportId) {
       blocked: true,
       reason: 'REPORTED_STOLEN',
       message: '🚨 This animal is reported STOLEN. Do not proceed. Contact police.',
+    };
+  }
+
+  // Check if home-slaughtered (ceremony)
+  if (animal.status === 'slaughtered_home') {
+    return {
+      found: true,
+      animal,
+      blocked: true,
+      reason: 'HOME_SLAUGHTER',
+      message: '🏠 This animal was slaughtered at home for a ceremony. Meat cannot be sold commercially.',
+    };
+  }
+
+  // Check if deceased — apply safety classification
+  if (animal.status === 'dead') {
+    const deathDate = animal.deathRecord?.deathDate || 'unknown date';
+    const cause = animal.deathRecord?.causeLabel || 'unknown';
+    const safety = classifyMeatSafety(animal.deathRecord);
+
+    return {
+      found: true,
+      animal,
+      blocked: !safety.edible,
+      safety: safety,
+      reason: safety.edible ? 'EMERGENCY_SLAUGHTER' : 'DECEASED',
+      message: safety.edible 
+        ? `⚠️ Emergency slaughter approved — ${safety.reason}`
+        : `🕯️ This animal is DECEASED (${cause}, ${deathDate.split('T')[0]}). ${safety.reason}`,
     };
   }
 
@@ -849,3 +1018,514 @@ module.exports.receiveMeatAtHandler = receiveMeatAtHandler;
 module.exports.sellMeat = sellMeat;
 module.exports.returnMeat = returnMeat;
 module.exports.getMeatChain = getMeatChain;
+
+/**
+ * Get full lineage of an animal (3 generations up + offspring down)
+ */
+function getLineage(passportId) {
+  const animal = livestock.get(passportId);
+  if (!animal) return null;
+
+  const buildAncestors = (passport, depth = 0) => {
+    if (!passport || depth > 3) return null;
+    const a = livestock.get(passport);
+    if (!a) return { passportId: passport, notFound: true };
+    return {
+      passportId: a.passportId,
+      type: a.type,
+      breed: a.breed,
+      gender: a.gender,
+      name: a.ownerName,
+      mother: a.motherPassport ? buildAncestors(a.motherPassport, depth + 1) : null,
+      father: a.fatherPassport ? buildAncestors(a.fatherPassport, depth + 1) : null,
+    };
+  };
+
+  return {
+    animal: enrichAnimal(animal),
+    mother: animal.motherPassport ? buildAncestors(animal.motherPassport) : null,
+    father: animal.fatherPassport ? buildAncestors(animal.fatherPassport) : null,
+    offspring: (animal.offspring || []).map(o => {
+      const child = livestock.get(o.passportId);
+      return child ? enrichAnimal(child) : o;
+    }),
+    offspringCount: (animal.offspring || []).length,
+  };
+}
+
+/**
+ * Enriched list of livestock by owner
+ */
+function getEnrichedLivestockByOwner(ownerId) {
+  return [...livestock.values()]
+    .filter(a => a.ownerId === ownerId)
+    .map(enrichAnimal);
+}
+
+/**
+ * Enriched single animal
+ */
+function getEnrichedLivestock(passportId) {
+  const animal = livestock.get(passportId);
+  return animal ? enrichAnimal(animal) : null;
+}
+
+module.exports.getLineage = getLineage;
+module.exports.getEnrichedLivestockByOwner = getEnrichedLivestockByOwner;
+module.exports.getEnrichedLivestock = getEnrichedLivestock;
+module.exports.enrichAnimal = enrichAnimal;
+module.exports.computeLifeStage = computeLifeStage;
+module.exports.computeAge = computeAge;
+
+
+// ═════════════════════════════════════════════════════
+// DEATH TRACKING
+// ═════════════════════════════════════════════════════
+
+const DEATH_CAUSES = [
+  { id: 'illness', label: 'Illness / Disease', icon: '🦠' },
+  { id: 'natural', label: 'Natural (old age)', icon: '🕰️' },
+  { id: 'predator', label: 'Predator attack', icon: '🐆' },
+  { id: 'accident', label: 'Accident', icon: '⚠️' },
+  { id: 'theft', label: 'Theft / Illegal slaughter', icon: '🔪' },
+  { id: 'unknown', label: 'Unknown', icon: '❓' },
+];
+
+/**
+ * Report an animal's death
+ */
+function reportAnimalDeath(passportId, data) {
+  const animal = livestock.get(passportId);
+  if (!animal) return { error: 'Animal not found' };
+  if (animal.status === 'dead') return { error: 'Animal already marked deceased' };
+  if (animal.isReportedStolen && data.cause !== 'theft') {
+    return { error: 'This animal is marked stolen. Report as theft cause.' };
+  }
+
+  const now = new Date().toISOString();
+
+  animal.status = 'dead';
+  animal.health = 'deceased';
+  animal.deathRecord = {
+    passportId,
+    deathDate: data.deathDate || now,
+    reportedAt: now,
+    cause: data.cause || 'unknown',
+    causeLabel: (DEATH_CAUSES.find(c => c.id === data.cause) || DEATH_CAUSES[5]).label,
+    diseaseType: data.diseaseType || null,
+    description: data.description || '',
+    location: data.location || animal.location,
+    reportedBy: data.reportedBy || animal.ownerName,
+    reportedByPhone: data.reportedByPhone || animal.ownerPhone,
+    photoUrl: data.photoUrl || null,
+    // Optional vet verification (can be added later)
+    vetVerified: false,
+    vetVerification: null,
+    // Compensation tracking
+    insurance: data.insurance || null,
+    countyCompensation: data.cause === 'predator' ? {
+      eligible: true,
+      status: 'not_claimed',
+      note: 'Kenya government compensates predator attacks',
+    } : null,
+    // Movement after death
+    disposalMethod: data.disposalMethod || null, // buried / burned / vet took / other
+  };
+
+  persist();
+
+  console.log('🕯️  Death reported:', passportId, '|', animal.type, animal.breed);
+  console.log('   Cause:', animal.deathRecord.causeLabel);
+  if (data.diseaseType) console.log('   Disease:', data.diseaseType);
+
+  return animal;
+}
+
+/**
+ * Vet verifies a death (optional, can be called later)
+ */
+function verifyDeathByVet(passportId, vetData) {
+  const animal = livestock.get(passportId);
+  if (!animal) return { error: 'Animal not found' };
+  if (animal.status !== 'dead' || !animal.deathRecord) {
+    return { error: 'Animal has no death record to verify' };
+  }
+
+  animal.deathRecord.vetVerified = true;
+  animal.deathRecord.vetVerification = {
+    vetName: vetData.vetName,
+    vetLicense: vetData.vetLicense || null,
+    vetPhone: vetData.vetPhone || null,
+    confirmedCause: vetData.confirmedCause || animal.deathRecord.cause,
+    notes: vetData.notes || '',
+    verifiedAt: new Date().toISOString(),
+  };
+
+  if (vetData.confirmedCause && vetData.confirmedCause !== animal.deathRecord.cause) {
+    animal.deathRecord.cause = vetData.confirmedCause;
+    animal.deathRecord.causeLabel = (DEATH_CAUSES.find(c => c.id === vetData.confirmedCause) || DEATH_CAUSES[5]).label;
+  }
+
+  persist();
+  console.log('✅ Death verified by vet:', passportId, '|', vetData.vetName);
+  return animal;
+}
+
+/**
+ * Get death record for an animal
+ */
+function getDeathRecord(passportId) {
+  const animal = livestock.get(passportId);
+  if (!animal || !animal.deathRecord) return null;
+  return animal.deathRecord;
+}
+
+/**
+ * List all deaths (with filters)
+ */
+function listDeaths(filter = {}) {
+  let list = [...livestock.values()].filter(a => a.status === 'dead' && a.deathRecord);
+
+  if (filter.cause) list = list.filter(a => a.deathRecord.cause === filter.cause);
+  if (filter.county) list = list.filter(a => a.deathRecord.location?.county === filter.county);
+  if (filter.ownerId) list = list.filter(a => a.ownerId === filter.ownerId);
+  if (filter.fromDate) list = list.filter(a => new Date(a.deathRecord.deathDate) >= new Date(filter.fromDate));
+  if (filter.toDate) list = list.filter(a => new Date(a.deathRecord.deathDate) <= new Date(filter.toDate));
+
+  return list
+    .map(a => ({ ...enrichAnimal(a), deathRecord: a.deathRecord }))
+    .sort((a, b) => new Date(b.deathRecord.deathDate) - new Date(a.deathRecord.deathDate));
+}
+
+/**
+ * Death statistics (for disease outbreak detection)
+ */
+function getDeathStats(filter = {}) {
+  const allDeaths = [...livestock.values()].filter(a => a.status === 'dead' && a.deathRecord);
+
+  const stats = {
+    total: allDeaths.length,
+    byCause: {},
+    byCounty: {},
+    byType: {},
+    byDisease: {},
+    last30Days: 0,
+    last7Days: 0,
+    vetVerified: 0,
+    pendingVetVerification: 0,
+  };
+
+  const now = Date.now();
+  const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
+  const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
+
+  for (const animal of allDeaths) {
+    const d = animal.deathRecord;
+    const deathTime = new Date(d.deathDate).getTime();
+
+    stats.byCause[d.cause] = (stats.byCause[d.cause] || 0) + 1;
+
+    const county = d.location?.county || 'Unknown';
+    if (!stats.byCounty[county]) stats.byCounty[county] = { total: 0, byCause: {} };
+    stats.byCounty[county].total++;
+    stats.byCounty[county].byCause[d.cause] = (stats.byCounty[county].byCause[d.cause] || 0) + 1;
+
+    stats.byType[animal.type] = (stats.byType[animal.type] || 0) + 1;
+
+    if (d.diseaseType) {
+      stats.byDisease[d.diseaseType] = (stats.byDisease[d.diseaseType] || 0) + 1;
+    }
+
+    if (deathTime >= thirtyDaysAgo) stats.last30Days++;
+    if (deathTime >= sevenDaysAgo) stats.last7Days++;
+
+    if (d.vetVerified) stats.vetVerified++;
+    else stats.pendingVetVerification++;
+  }
+
+  return stats;
+}
+
+/**
+ * Detect potential disease outbreaks
+ * (Multiple deaths from same disease in same county within 14 days)
+ */
+function detectOutbreaks() {
+  const allDeaths = [...livestock.values()].filter(a => a.status === 'dead' && a.deathRecord && a.deathRecord.cause === 'illness');
+  const fourteenDaysAgo = Date.now() - (14 * 24 * 60 * 60 * 1000);
+  const clusters = {};
+
+  for (const animal of allDeaths) {
+    const d = animal.deathRecord;
+    if (new Date(d.deathDate).getTime() < fourteenDaysAgo) continue;
+    if (!d.diseaseType) continue;
+
+    const county = d.location?.county || 'Unknown';
+    const key = `${county}::${d.diseaseType}`;
+
+    if (!clusters[key]) {
+      clusters[key] = {
+        county,
+        disease: d.diseaseType,
+        count: 0,
+        animals: [],
+        firstDeath: d.deathDate,
+        lastDeath: d.deathDate,
+      };
+    }
+
+    clusters[key].count++;
+    clusters[key].animals.push({
+      passportId: animal.passportId,
+      type: animal.type,
+      deathDate: d.deathDate,
+    });
+    if (new Date(d.deathDate) > new Date(clusters[key].lastDeath)) {
+      clusters[key].lastDeath = d.deathDate;
+    }
+  }
+
+  // Only return clusters with 3+ deaths (potential outbreak)
+  return Object.values(clusters)
+    .filter(c => c.count >= 3)
+    .sort((a, b) => b.count - a.count);
+}
+
+module.exports.DEATH_CAUSES = DEATH_CAUSES;
+module.exports.reportAnimalDeath = reportAnimalDeath;
+module.exports.verifyDeathByVet = verifyDeathByVet;
+module.exports.getDeathRecord = getDeathRecord;
+module.exports.listDeaths = listDeaths;
+module.exports.getDeathStats = getDeathStats;
+module.exports.detectOutbreaks = detectOutbreaks;
+
+
+// ═════════════════════════════════════════════════════
+// MEAT SAFETY CLASSIFICATION
+// ═════════════════════════════════════════════════════
+
+/**
+ * Classify whether meat from a dead animal is safe to eat
+ * Based on death cause + vet verification + timing
+ */
+function classifyMeatSafety(deathRecord) {
+  if (!deathRecord) return { edible: false, reason: 'No death record' };
+
+  const cause = deathRecord.cause;
+  const hoursSinceDeath = (Date.now() - new Date(deathRecord.deathDate).getTime()) / (1000 * 60 * 60);
+
+  // Rule 1: Illness — never edible
+  if (cause === 'illness') {
+    return {
+      edible: false,
+      severity: 'critical',
+      reason: 'Disease risk — meat must not be consumed',
+      action: 'Bury or burn immediately',
+    };
+  }
+
+  // Rule 2: Predator attack — never edible
+  if (cause === 'predator') {
+    return {
+      edible: false,
+      severity: 'critical',
+      reason: 'Predator attacks contaminate meat',
+      action: 'Bury or burn immediately',
+    };
+  }
+
+  // Rule 3: Theft / illegal slaughter — never edible
+  if (cause === 'theft') {
+    return {
+      edible: false,
+      severity: 'critical',
+      reason: 'Illegal slaughter — meat cannot be sold or consumed',
+      action: 'Report to police',
+    };
+  }
+
+  // Rule 4: Unknown cause — never edible
+  if (cause === 'unknown') {
+    return {
+      edible: false,
+      severity: 'high',
+      reason: 'Cause unknown — cannot verify safety',
+      action: 'Bury or burn',
+    };
+  }
+
+  // Rule 5: Natural (old age) — edible only with vet approval
+  if (cause === 'natural') {
+    return {
+      edible: deathRecord.vetVerified,
+      severity: 'medium',
+      reason: deathRecord.vetVerified 
+        ? 'Vet verified safe for consumption' 
+        : 'Requires vet inspection before consumption',
+      action: deathRecord.vetVerified ? 'Safe to consume' : 'Vet must inspect',
+      requiresVet: !deathRecord.vetVerified,
+    };
+  }
+
+  // Rule 6: Accident — edible only if vet verified WITHIN 2 hours
+  if (cause === 'accident') {
+    if (hoursSinceDeath > 2) {
+      return {
+        edible: false,
+        severity: 'high',
+        reason: 'Too late for emergency slaughter (over 2 hours since death)',
+        action: 'Bury or burn',
+      };
+    }
+    if (!deathRecord.vetVerified) {
+      return {
+        edible: false,
+        severity: 'high',
+        reason: 'Vet must inspect within 2 hours of death',
+        action: 'Call vet immediately',
+        requiresVet: true,
+        hoursRemaining: (2 - hoursSinceDeath).toFixed(1),
+      };
+    }
+    return {
+      edible: true,
+      severity: 'low',
+      reason: 'Emergency slaughter — vet approved',
+      action: 'Safe for immediate consumption, not for sale',
+      requiresVet: false,
+    };
+  }
+
+  return { edible: false, severity: 'high', reason: 'Unclassified', action: 'Consult vet' };
+}
+
+// ═════════════════════════════════════════════════════
+// HOME SLAUGHTER (CEREMONY)
+// ═════════════════════════════════════════════════════
+
+const CEREMONY_TYPES = [
+  { id: 'wedding', label: 'Wedding', icon: '💍' },
+  { id: 'funeral', label: 'Funeral', icon: '🕊️' },
+  { id: 'dowry', label: 'Dowry / Ruracio', icon: '🎁' },
+  { id: 'religious', label: 'Religious (Eid, Diwali, etc.)', icon: '🕌' },
+  { id: 'family', label: 'Family gathering', icon: '👨‍👩‍👧‍👦' },
+  { id: 'other', label: 'Other celebration', icon: '🎉' },
+];
+
+/**
+ * Record a home slaughter for ceremony
+ * NOT a death — separate status: slaughtered_home
+ */
+function recordHomeSlaughter(passportId, data) {
+  const animal = livestock.get(passportId);
+  if (!animal) return { error: 'Animal not found' };
+  if (animal.status === 'dead') return { error: 'Animal already marked dead' };
+  if (animal.status === 'slaughtered_home') return { error: 'Already recorded as home slaughter' };
+  if (animal.isReportedStolen) return { error: 'Cannot record stolen animal as home slaughter' };
+  if (animal.health !== 'healthy') return { error: 'Animal is not healthy — consult vet before slaughter' };
+
+  const now = new Date().toISOString();
+
+  animal.status = 'slaughtered_home';
+  animal.health = 'consumed';
+  animal.homeSlaughter = {
+    passportId,
+    ceremonyType: data.ceremonyType || 'family',
+    ceremonyLabel: (CEREMONY_TYPES.find(c => c.id === data.ceremonyType) || CEREMONY_TYPES[4]).label,
+    ceremonyDate: data.ceremonyDate || now,
+    recordedAt: now,
+    numberOfGuests: data.numberOfGuests || null,
+    slaughteredBy: data.slaughteredBy || animal.ownerName,
+    location: data.location || animal.location,
+    notes: data.notes || '',
+    photos: data.photos || [],
+    // Certificate (optional)
+    certificate: {
+      issued: true,
+      certificateId: 'HOME-CERT-' + Date.now().toString(36).toUpperCase(),
+      issuedAt: now,
+      message: 'This animal was healthy at time of home slaughter. Meat is for home/family consumption only. NOT FOR SALE.',
+      animalSnapshot: {
+        passportId: animal.passportId,
+        type: animal.type,
+        breed: animal.breed,
+        gender: animal.gender,
+        aiCoat: animal.aiCoat,
+        ownerName: animal.ownerName,
+      },
+    },
+    // Cannot be sold
+    saleable: false,
+  };
+
+  persist();
+
+  console.log('🏠 Home slaughter recorded:', passportId, '|', animal.type, animal.breed);
+  console.log('   Ceremony:', animal.homeSlaughter.ceremonyLabel);
+  console.log('   Certificate:', animal.homeSlaughter.certificate.certificateId);
+
+  return animal;
+}
+
+function getHomeSlaughterRecord(passportId) {
+  const animal = livestock.get(passportId);
+  if (!animal || !animal.homeSlaughter) return null;
+  return animal.homeSlaughter;
+}
+
+function listHomeSlaughters(filter = {}) {
+  let list = [...livestock.values()].filter(a => a.status === 'slaughtered_home' && a.homeSlaughter);
+
+  if (filter.ceremonyType) list = list.filter(a => a.homeSlaughter.ceremonyType === filter.ceremonyType);
+  if (filter.county) list = list.filter(a => a.homeSlaughter.location?.county === filter.county);
+  if (filter.ownerId) list = list.filter(a => a.ownerId === filter.ownerId);
+  if (filter.fromDate) list = list.filter(a => new Date(a.homeSlaughter.ceremonyDate) >= new Date(filter.fromDate));
+  if (filter.toDate) list = list.filter(a => new Date(a.homeSlaughter.ceremonyDate) <= new Date(filter.toDate));
+
+  return list
+    .map(a => ({ ...enrichAnimal(a), homeSlaughter: a.homeSlaughter }))
+    .sort((a, b) => new Date(b.homeSlaughter.ceremonyDate) - new Date(a.homeSlaughter.ceremonyDate));
+}
+
+function getHomeSlaughterStats(filter = {}) {
+  const all = [...livestock.values()].filter(a => a.status === 'slaughtered_home' && a.homeSlaughter);
+
+  const stats = {
+    total: all.length,
+    byCeremony: {},
+    byCounty: {},
+    byType: {},
+    last30Days: 0,
+    last7Days: 0,
+    totalGuests: 0,
+  };
+
+  const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+  const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+
+  for (const animal of all) {
+    const h = animal.homeSlaughter;
+    const time = new Date(h.ceremonyDate).getTime();
+
+    stats.byCeremony[h.ceremonyType] = (stats.byCeremony[h.ceremonyType] || 0) + 1;
+
+    const county = h.location?.county || 'Unknown';
+    stats.byCounty[county] = (stats.byCounty[county] || 0) + 1;
+
+    stats.byType[animal.type] = (stats.byType[animal.type] || 0) + 1;
+
+    if (time >= thirtyDaysAgo) stats.last30Days++;
+    if (time >= sevenDaysAgo) stats.last7Days++;
+
+    if (h.numberOfGuests) stats.totalGuests += h.numberOfGuests;
+  }
+
+  return stats;
+}
+
+module.exports.classifyMeatSafety = classifyMeatSafety;
+module.exports.CEREMONY_TYPES = CEREMONY_TYPES;
+module.exports.recordHomeSlaughter = recordHomeSlaughter;
+module.exports.getHomeSlaughterRecord = getHomeSlaughterRecord;
+module.exports.listHomeSlaughters = listHomeSlaughters;
+module.exports.getHomeSlaughterStats = getHomeSlaughterStats;
