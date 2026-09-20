@@ -76,3 +76,26 @@ api.shamba = {
   reportStolen: (passportId, data) => request(`/api/shamba/livestock/${passportId}/report-stolen`, { method: 'POST', body: data }),
   addVaccination: (passportId, data) => request(`/api/shamba/livestock/${passportId}/vaccination`, { method: 'POST', body: data }),
 };
+
+// Shamba — Death + Safety + Home Slaughter
+api.shamba.deathCauses = () => request('/api/shamba/death-causes');
+api.shamba.reportDeath = (passportId, data) => request(`/api/shamba/livestock/${passportId}/death`, { method: 'POST', body: data });
+api.shamba.getDeathRecord = (passportId) => request(`/api/shamba/livestock/${passportId}/death`);
+api.shamba.listDeaths = (filter = {}) => {
+  const params = new URLSearchParams(filter).toString();
+  return request(`/api/shamba/deaths/list${params ? '?' + params : ''}`);
+};
+api.shamba.deathStats = () => request('/api/shamba/deaths/stats');
+api.shamba.outbreaks = () => request('/api/shamba/deaths/outbreaks');
+api.shamba.verifyDeathByVet = (passportId, data) => request(`/api/shamba/livestock/${passportId}/death/verify-vet`, { method: 'POST', body: data });
+
+api.shamba.checkSafety = (passportId) => request(`/api/shamba/safety/${passportId}`);
+
+api.shamba.ceremonyTypes = () => request('/api/shamba/ceremony-types');
+api.shamba.recordHomeSlaughter = (passportId, data) => request(`/api/shamba/livestock/${passportId}/home-slaughter`, { method: 'POST', body: data });
+api.shamba.getHomeSlaughter = (passportId) => request(`/api/shamba/livestock/${passportId}/home-slaughter`);
+api.shamba.listHomeSlaughters = (filter = {}) => {
+  const params = new URLSearchParams(filter).toString();
+  return request(`/api/shamba/home-slaughters/list${params ? '?' + params : ''}`);
+};
+api.shamba.homeSlaughterStats = () => request('/api/shamba/home-slaughters/stats');
