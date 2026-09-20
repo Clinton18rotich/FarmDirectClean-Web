@@ -1,5 +1,4 @@
-import React, { useState } from 'react';
-import { ALL_COUNTIES } from '../data/farmData';
+import React, { useState, useEffect } from 'react';
 import RiderRegister from './RiderRegister';
 
 const ALL_VEHICLES = [
@@ -20,34 +19,156 @@ const ALL_VEHICLES = [
   { type: 'Boat/Ferry', icon: '⛴️', maxWeight: '5000kg', price: 'KES 1,000-5,000', desc: 'Lakeside/island deliveries' },
 ];
 
-const RIDERS = [
-  { id: 1, name: 'James Mwangi', vehicle: 'Motorcycle', icon: '🏍️', rating: 4.9, price: 200, county: 'Nakuru', village: 'Kaptembwo', deliveries: 234, status: 'Available' },
-  { id: 2, name: 'Sarah Akello', vehicle: 'Pickup', icon: '🛻', rating: 4.8, price: 800, county: 'Nakuru', village: 'Section 58', deliveries: 156, status: 'Available' },
-  { id: 3, name: 'Peter Kiplagat', vehicle: 'Fuso', icon: '🚚', rating: 4.6, price: 5000, county: 'Uasin Gishu', village: 'Eldoret Town', deliveries: 89, status: 'Available' },
-  { id: 4, name: 'Grace Wambui', vehicle: 'Motorcycle', icon: '🏍️', rating: 4.7, price: 300, county: 'Nairobi', village: 'Kawangware', deliveries: 312, status: 'Available' },
-  { id: 5, name: 'John Ochieng', vehicle: 'Boat/Ferry', icon: '⛴️', rating: 4.5, price: 2000, county: 'Kisumu', village: 'Kisumu Pier', deliveries: 178, status: 'Available' },
-  { id: 6, name: 'David Kiprop', vehicle: 'Tractor', icon: '🚜', rating: 4.8, price: 5000, county: 'Uasin Gishu', village: 'Eldoret', deliveries: 45, status: 'On Delivery' },
+const MOCK_RIDERS = [
+  { id: 'mock-1', name: 'James Mwangi', vehicle: 'Motorcycle', icon: '🏍️', rating: 4.9, pricePerDelivery: 200, county: 'Nakuru', village: 'Kaptembwo', totalDeliveries: 234, status: 'active', isMock: true },
+  { id: 'mock-2', name: 'Sarah Akello', vehicle: 'Pickup', icon: '🛻', rating: 4.8, pricePerDelivery: 800, county: 'Nakuru', village: 'Section 58', totalDeliveries: 156, status: 'active', isMock: true },
+  { id: 'mock-3', name: 'Peter Kiplagat', vehicle: 'Fuso', icon: '🚚', rating: 4.6, pricePerDelivery: 5000, county: 'Uasin Gishu', village: 'Eldoret Town', totalDeliveries: 89, status: 'active', isMock: true },
+  { id: 'mock-4', name: 'Grace Wambui', vehicle: 'Motorcycle', icon: '🏍️', rating: 4.7, pricePerDelivery: 300, county: 'Nairobi', village: 'Kawangware', totalDeliveries: 312, status: 'active', isMock: true },
+  { id: 'mock-5', name: 'John Ochieng', vehicle: 'Boat/Ferry', icon: '⛴️', rating: 4.5, pricePerDelivery: 2000, county: 'Kisumu', village: 'Kisumu Pier', totalDeliveries: 178, status: 'active', isMock: true },
+  { id: 'mock-6', name: 'David Kiprop', vehicle: 'Tractor', icon: '🚜', rating: 4.8, pricePerDelivery: 5000, county: 'Uasin Gishu', village: 'Eldoret', totalDeliveries: 45, status: 'active', isMock: true },
 ];
 
 export default function DeliveryScreen() {
   const [showReg, setShowReg] = useState(false);
   const [filterCounty, setFilterCounty] = useState('All');
-  const available = RIDERS.filter(r => r.status === 'Available').length;
-  const total = RIDERS.reduce((s, r) => s + r.deliveries, 0);
+  const [realRiders, setRealRiders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [myRider, setMyRider] = useState(null);
 
-  const filtered = filterCounty === 'All' ? RIDERS : RIDERS.filter(r => r.county === filterCounty);
+  // Load real riders from backend
+  const loadRiders = async () => {
+    try {
+      const res = await fetch('http://localhost:3001/api/rider/list');
+      const data = await res.json();
+      if (data.success && data.riders) {
+        const normalized = data.riders.map(r => ({
+          id: r.id,
+          name: r.rider.fullName,
+          vehicle: r.vehicle.type,
+          icon: r.vehicle.icon,
+          rating: r.rating || 5.0,
+          pricePerDelivery: r.pricePerDelivery,
+          county: r.location?.county || 'Unknown',
+          village: r.location?.area || r.location?.locality || r.location?.ward || '',
+          subCounty: r.location?.subCounty || '',
+          totalDeliveries: r.totalDeliveries || 0,
+          status: r.status,
+          isOnline: r.isOnline,
+          isRegistered: true,
+        }));
+        setRealRiders(normalized);
+        console.log('📍 Loaded', normalized.length, 'real riders');
+      }
+    } catch (err) {
+      console.error('Failed to load riders:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadRiders();
+    try {
+      const saved = localStorage.getItem('riderRegistration');
+      if (saved) setMyRider(JSON.parse(saved));
+    } catch (e) {}
+  }, []);
+
+  const handleRiderRegistered = (data) => {
+    setMyRider(data);
+    loadRiders();
+    setShowReg(false);
+  };
+
+  // Real riders replace mock data when they exist
+  const hasRealRiders = realRiders.length > 0;
+  const displayRiders = hasRealRiders ? realRiders : MOCK_RIDERS;
+  const isDemoMode = !hasRealRiders;
+
+  const available = displayRiders.filter(r => r.status === 'active').length;
+  const totalDeliveries = displayRiders.reduce((s, r) => s + (r.totalDeliveries || 0), 0);
+
+  // Get unique counties from riders
+  const counties = [...new Set(displayRiders.map(r => r.county).filter(Boolean))].sort();
+  const filtered = filterCounty === 'All' ? displayRiders : displayRiders.filter(r => r.county === filterCounty);
 
   return (
     <div>
       <div style={{ background: '#4CAF50', padding: 16, color: 'white' }}>
         <h3 style={{ margin: 0 }}>🚚 Delivery Network</h3>
-        <p style={{ fontSize: 11, opacity: .8, margin: '4px 0 0' }}>County → Village delivery • Auto-assign nearest rider</p>
+        <p style={{ fontSize: 11, opacity: .8, margin: '4px 0 0' }}>
+          {isDemoMode 
+            ? 'Demo riders • Register to go live' 
+            : `${displayRiders.length} registered riders • ${counties.length} counties`}
+        </p>
       </div>
 
+      {/* Demo Mode Banner */}
+      {isDemoMode && (
+        <div style={{
+          margin: '12px 12px 0', background: '#FFF8E1', border: '2px dashed #FFB74D',
+          borderRadius: 12, padding: 14
+        }}>
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
+            <span style={{fontSize:24}}>🧪</span>
+            <div style={{flex:1}}>
+              <strong style={{fontSize:13,color:'#E65100'}}>Demo Riders</strong>
+              <p style={{fontSize:11,margin:'2px 0 0',color:'#666'}}>These are sample riders. Real registered riders will replace them.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Live Mode Banner */}
+      {!isDemoMode && !myRider && (
+        <div style={{
+          margin: '12px 12px 0', background: '#E8F5E9', border: '1px solid #A5D6A7',
+          borderRadius: 12, padding: 14, display: 'flex', alignItems: 'center', gap: 10
+        }}>
+          <span style={{fontSize:24}}>✅</span>
+          <div style={{flex:1}}>
+            <strong style={{fontSize:13,color:'#2E7D32'}}>Live Delivery Network</strong>
+            <p style={{fontSize:11,margin:'2px 0 0',color:'#666'}}>
+              {realRiders.length} rider{realRiders.length !== 1 ? 's' : ''} registered
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* My Rider Banner */}
+      {myRider && (
+        <div style={{
+          margin: '12px 12px 0', background: '#E3F2FD', border: '1px solid #90CAF9',
+          borderRadius: 12, padding: 14
+        }}>
+          <div style={{display:'flex',alignItems:'center',gap:10}}>
+            <span style={{fontSize:24}}>🏍️</span>
+            <div style={{flex:1}}>
+              <strong style={{fontSize:13,color:'#0D47A1'}}>
+                You are registered as {myRider.rider?.fullName}
+              </strong>
+              <p style={{fontSize:11,margin:'2px 0 0',color:'#1565C0'}}>
+                {myRider.vehicle?.icon} {myRider.vehicle?.type} • KES {myRider.pricePerDelivery}/delivery
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, padding: 12 }}>
-        <div style={{ background: '#E8F5E9', padding: 12, borderRadius: 10, textAlign: 'center' }}><strong style={{ fontSize: 20, color: '#2E7D32' }}>{RIDERS.length}</strong><p style={{ fontSize: 10, color: 'gray', margin: 0 }}>Riders</p></div>
-        <div style={{ background: '#E3F2FD', padding: 12, borderRadius: 10, textAlign: 'center' }}><strong style={{ fontSize: 20, color: '#1565C0' }}>{available}</strong><p style={{ fontSize: 10, color: 'gray', margin: 0 }}>Available</p></div>
-        <div style={{ background: '#FFF3E0', padding: 12, borderRadius: 10, textAlign: 'center' }}><strong style={{ fontSize: 20, color: '#E65100' }}>{total}</strong><p style={{ fontSize: 10, color: 'gray', margin: 0 }}>Deliveries</p></div>
+        <div style={{ background: '#E8F5E9', padding: 12, borderRadius: 10, textAlign: 'center' }}>
+          <strong style={{ fontSize: 20, color: '#2E7D32' }}>{displayRiders.length}</strong>
+          <p style={{ fontSize: 10, color: 'gray', margin: 0 }}>Riders</p>
+        </div>
+        <div style={{ background: '#E3F2FD', padding: 12, borderRadius: 10, textAlign: 'center' }}>
+          <strong style={{ fontSize: 20, color: '#1565C0' }}>{available}</strong>
+          <p style={{ fontSize: 10, color: 'gray', margin: 0 }}>Available</p>
+        </div>
+        <div style={{ background: '#FFF3E0', padding: 12, borderRadius: 10, textAlign: 'center' }}>
+          <strong style={{ fontSize: 20, color: '#E65100' }}>{totalDeliveries}</strong>
+          <p style={{ fontSize: 10, color: 'gray', margin: 0 }}>Deliveries</p>
+        </div>
       </div>
 
       <div style={{ padding: 12 }}>
@@ -58,7 +179,7 @@ export default function DeliveryScreen() {
         {/* Vehicle Types */}
         <h4 style={{ marginBottom: 8 }}>All Vehicle Types Accepted:</h4>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 16 }}>
-          {ALL_VEHICLES.map(v => (
+          {ALL_VEHICLES.slice(0, 9).map(v => (
             <div key={v.type} style={{ background: 'white', borderRadius: 10, padding: 8, textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
               <span style={{ fontSize: 24 }}>{v.icon}</span>
               <p style={{ fontWeight: 'bold', fontSize: 10, margin: '2px 0' }}>{v.type}</p>
@@ -69,40 +190,60 @@ export default function DeliveryScreen() {
 
         {/* County Filter */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <h4 style={{ margin: 0 }}>Registered Riders</h4>
+          <h4 style={{ margin: 0 }}>
+            {isDemoMode ? 'Demo Riders' : 'Registered Riders'} ({filtered.length})
+          </h4>
           <select value={filterCounty} onChange={e => setFilterCounty(e.target.value)} style={{ padding: '6px 10px', borderRadius: 16, border: '1px solid #ddd', fontSize: 11, background: 'white' }}>
             <option value="All">All Counties</option>
-            {ALL_COUNTIES.map(c => <option key={c}>{c}</option>)}
+            {counties.map(c => <option key={c}>{c}</option>)}
           </select>
         </div>
 
+        {loading && <p style={{ textAlign: 'center', color: '#999', fontSize: 12 }}>Loading riders...</p>}
+
+        {filtered.length === 0 && !loading && (
+          <p style={{ textAlign: 'center', color: '#999', fontSize: 12, padding: 20 }}>
+            No riders in {filterCounty} yet
+          </p>
+        )}
+
         {filtered.map(r => (
-          <div key={r.id} style={{ background: 'white', borderRadius: 12, padding: 12, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 10, boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-            <div style={{ width: 45, height: 45, borderRadius: '50%', background: r.status === 'Available' ? '#4CAF50' : '#FF6F00', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>{r.icon}</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <strong style={{ fontSize: 13 }}>{r.name}</strong>
-                <span style={{ background: r.status === 'Available' ? '#E8F5E9' : '#FFF3E0', padding: '2px 8px', borderRadius: 8, fontSize: 9, color: r.status === 'Available' ? '#2E7D32' : '#E65100' }}>{r.status}</span>
+          <div key={r.id} style={{
+            background: r.isRegistered ? '#F0F9F0' : 'white',
+            borderRadius: 12, padding: 12, marginBottom: 8,
+            border: r.isRegistered ? '2px solid #A5D6A7' : '1px solid #E0E0E0',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 36 }}>{r.icon}</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <strong style={{ fontSize: 13 }}>{r.name}</strong>
+                  <span style={{
+                    background: r.isRegistered ? '#2E7D32' : '#9E9E9E',
+                    color: 'white', padding: '2px 6px', borderRadius: 4,
+                    fontSize: 8, fontWeight: 'bold'
+                  }}>
+                    {r.isRegistered ? '✅ VERIFIED' : 'DEMO'}
+                  </span>
+                </div>
+                <p style={{ fontSize: 11, color: 'gray', margin: '2px 0' }}>
+                  {r.icon} {r.vehicle} • ⭐ {r.rating}
+                </p>
+                <p style={{ fontSize: 11, color: 'gray', margin: 0 }}>
+                  📍 {r.village}{r.village && r.county ? ', ' : ''}{r.county}
+                </p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 11 }}>
+                  <span style={{ color: '#2E7D32', fontWeight: 'bold' }}>KES {r.pricePerDelivery}/delivery</span>
+                  <span style={{ color: '#666' }}>{r.totalDeliveries} deliveries</span>
+                </div>
               </div>
-              <p style={{ fontSize: 10, color: 'gray', margin: 0 }}>{r.vehicle} • ⭐{r.rating} • {r.deliveries} deliveries</p>
-              <p style={{ fontSize: 10, color: '#4CAF50', margin: 0 }}>📍 {r.village}, {r.county} • KES {r.price}/delivery</p>
             </div>
           </div>
         ))}
-
-        {filtered.length === 0 && <p style={{ textAlign: 'center', color: '#999', padding: 20 }}>No riders in {filterCounty}. Be the first!</p>}
       </div>
 
-      <div style={{ background: '#1B5E20', margin: 12, padding: 20, borderRadius: 16, color: 'white', textAlign: 'center' }}>
-        <h3 style={{ margin: '0 0 8px' }}>💰 Earn as a Rider</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-          <div><strong style={{ fontSize: 18 }}>KES 200-15,000</strong><p style={{ fontSize: 10, margin: 0, opacity: .8 }}>Per Delivery</p></div>
-          <div><strong style={{ fontSize: 18 }}>KES 50K-200K</strong><p style={{ fontSize: 10, margin: 0, opacity: .8 }}>Per Month</p></div>
-          <div><strong style={{ fontSize: 18 }}>Flexible</strong><p style={{ fontSize: 10, margin: 0, opacity: .8 }}>Your Schedule</p></div>
-        </div>
-      </div>
-
-      {showReg && <RiderRegister onClose={() => setShowReg(false)} />}
+      {showReg && <RiderRegister onClose={() => setShowReg(false)} onRegister={handleRiderRegistered} />}
     </div>
   );
 }

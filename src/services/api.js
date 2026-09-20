@@ -48,3 +48,10 @@ export const api = {
 api.registerFarmer = (data) => request('/api/farmer/register', { method: 'POST', body: data });
 api.getFarmer = (id) => request(`/api/farmer/${id}`);
 api.listFarmers = () => request('/api/farmer/list');
+
+// Rider registration
+api.registerRider = (data) => request('/api/rider/register', { method: 'POST', body: data });
+api.getRider = (id) => request(`/api/rider/${id}`);
+api.listRiders = () => request('/api/rider/list');
+api.onlineRiders = () => request('/api/rider/online');
+api.setRiderStatus = (id, isOnline) => request(`/api/rider/${id}/status`, { method: 'PATCH', body: { isOnline } });

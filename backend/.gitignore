@@ -1,3 +1,6 @@
 node_modules/
 .env
 *.log
+
+# Local storage (dev data — persists across restarts but not committed)
+data/storage/

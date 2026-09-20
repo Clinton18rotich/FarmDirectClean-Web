@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
+const storage = require('../services/storage');
 
-const farmers = new Map();
+const farmers = storage.objectToMap(storage.load('farmers', {}));
 
 function normalizeKenyaPhone(input) {
   if (!input) return '';
@@ -14,53 +15,39 @@ function normalizeKenyaPhone(input) {
   return '+' + digits;
 }
 
+function persist() {
+  storage.save('farmers', storage.mapToObject(farmers));
+}
+
 router.post('/register', (req, res) => {
   try {
     const { farmer, payment, products } = req.body;
 
-    if (!farmer?.fullName || !farmer?.phone) {
-      return res.status(400).json({ success: false, message: 'Name and phone required' });
-    }
-    if (!payment?.method) {
-      return res.status(400).json({ success: false, message: 'Payment method required' });
-    }
+    if (!farmer?.fullName || !farmer?.phone) return res.status(400).json({ success: false, message: 'Name and phone required' });
+    if (!payment?.method) return res.status(400).json({ success: false, message: 'Payment method required' });
 
     const normalizedFarmerPhone = normalizeKenyaPhone(farmer.phone);
     const normalizedPochiPhone = payment.pochiPhone ? normalizeKenyaPhone(payment.pochiPhone) : null;
 
-    if (payment.method === 'till' && !payment.tillNumber) {
-      return res.status(400).json({ success: false, message: 'Till number required' });
-    }
-    if (payment.method === 'paybill' && (!payment.paybillNumber || !payment.paybillAccount)) {
-      return res.status(400).json({ success: false, message: 'Paybill number and account required' });
-    }
-    if (payment.method === 'pochi' && !normalizedPochiPhone) {
-      return res.status(400).json({ success: false, message: 'Pochi phone required' });
-    }
+    if (payment.method === 'till' && !payment.tillNumber) return res.status(400).json({ success: false, message: 'Till number required' });
+    if (payment.method === 'paybill' && (!payment.paybillNumber || !payment.paybillAccount)) return res.status(400).json({ success: false, message: 'Paybill required' });
+    if (payment.method === 'pochi' && !normalizedPochiPhone) return res.status(400).json({ success: false, message: 'Pochi phone required' });
 
     const id = 'FARM-' + Date.now().toString(36).toUpperCase();
     const record = {
       id,
       ...farmer,
       phone: normalizedFarmerPhone,
-      payment: {
-        ...payment,
-        pochiPhone: normalizedPochiPhone,
-      },
+      payment: { ...payment, pochiPhone: normalizedPochiPhone },
       products,
       registeredAt: new Date().toISOString(),
       status: 'active',
     };
 
     farmers.set(id, record);
+    persist();
 
-    console.log('👨‍🌾 Farmer registered:', id, farmer.fullName);
-    console.log('   Phone:', normalizedFarmerPhone);
-    console.log('   Payment:', payment.method,
-      payment.method === 'till' ? payment.tillNumber :
-      payment.method === 'paybill' ? payment.paybillNumber + '/' + payment.paybillAccount :
-      normalizedPochiPhone);
-    console.log('   Products:', products?.length || 0);
+    console.log('👨‍🌾 Farmer registered:', id, farmer.fullName, '| Saved to disk');
 
     res.json({ success: true, farmerId: id, farmer: record });
   } catch (error) {
@@ -79,3 +66,4 @@ router.get('/:id', (req, res) => {
 });
 
 module.exports = router;
+module.exports._farmers = farmers;

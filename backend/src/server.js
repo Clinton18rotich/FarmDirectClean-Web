@@ -20,6 +20,9 @@ app.use('/api/pochi', require('./routes/pochi'));
 app.use('/api/business', require('./routes/business'));
 app.use('/api/location', require('./routes/location'));
 app.use('/api/farmer', require('./routes/farmer'));
+app.use('/api/rider', require('./routes/rider'));
+app.use('/api/delivery', require('./routes/delivery'));
+app.use('/api/webhook', require('./routes/webhook'));
 
 app.use((req, res) => {
   res.status(404).json({ success: false, message: 'Not found' });
