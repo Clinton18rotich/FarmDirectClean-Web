@@ -9,6 +9,7 @@ import BusinessDashboard from "./pages/BusinessDashboard";
 import React, { useState, useEffect } from 'react';
 import { ALL_PRODUCTS, CATEGORIES, CHAT_FARMERS, RIDERS } from './data/farmData';
 import './App.css';
+import AlertsScreen from './components/AlertsScreen';
 
 export default function App() {
   const [tab, setTab] = useState(0);
@@ -341,7 +342,7 @@ export default function App() {
         {tab === 3 && <DeliveryScreen />}
         {tab === 4 && <TrackingScreen />}
         {tab === 5 && <div style={{padding:20,textAlign:'center'}}><h2>📍 Nakuru</h2><span style={{fontSize:80}}>⛅</span><h1 style={{fontSize:56}}>24°C</h1></div>}
-        {tab === 6 && <div style={{padding:12}}><h2>🔔 Notifications</h2><div style={{background:'#E8F5E9',padding:12,borderRadius:10,marginBottom:6}}>✅ Order #4521 delivered <span style={{fontSize:10,color:'gray'}}>5m ago</span></div></div>}
+        {tab === 6 && <AlertsScreen />}
       </main>
 
       {showCart && (

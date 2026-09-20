@@ -140,3 +140,19 @@ api.meatHandler = {
   getReceived: (id) => request(`/api/meat-handler/${id}/received`),
   getSold: (id) => request(`/api/meat-handler/${id}/sold`),
 };
+
+// Delivery API (for alerts, matching)
+api.listDeliveries = (filter = {}) => {
+  const params = new URLSearchParams(filter).toString();
+  return request(`/api/delivery/list${params ? '?' + params : ''}`);
+};
+api.getDelivery = (id) => request(`/api/delivery/${id}`);
+api.createDelivery = (data) => request('/api/delivery/create', { method: 'POST', body: data });
+api.deliveryStats = () => request('/api/delivery/stats');
+api.riderReply = (id, data) => request(`/api/delivery/${id}/rider-reply`, { method: 'POST', body: data });
+
+// Theft alert tracking (for AlertsScreen)
+api.shamba.listTheftAlerts = () => request('/api/shamba/theft-alerts/list');
+api.shamba.theftAlertStats = () => request('/api/shamba/theft-alerts/stats');
+api.shamba.getTheftAlert = (passportId) => request(`/api/shamba/theft-alerts/${passportId}`);
+api.shamba.resolveTheftAlert = (theftId, data) => request(`/api/shamba/theft-alerts/${theftId}/resolve`, { method: 'POST', body: data });
