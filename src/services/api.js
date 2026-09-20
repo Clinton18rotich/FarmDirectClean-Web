@@ -55,3 +55,24 @@ api.getRider = (id) => request(`/api/rider/${id}`);
 api.listRiders = () => request('/api/rider/list');
 api.onlineRiders = () => request('/api/rider/online');
 api.setRiderStatus = (id, isOnline) => request(`/api/rider/${id}/status`, { method: 'PATCH', body: { isOnline } });
+
+// Shamba & Mfugo Safi
+api.shamba = {
+  health: () => request('/api/shamba/health'),
+  stats: () => request('/api/shamba/stats'),
+
+  // Land
+  registerLand: (data) => request('/api/shamba/land/register', { method: 'POST', body: data }),
+  listLand: () => request('/api/shamba/land/list'),
+  getLandByOwner: (ownerId) => request(`/api/shamba/land/owner/${ownerId}`),
+  getLand: (id) => request(`/api/shamba/land/${id}`),
+  addWitness: (id, data) => request(`/api/shamba/land/${id}/witness`, { method: 'POST', body: data }),
+
+  // Livestock
+  registerLivestock: (data) => request('/api/shamba/livestock/register', { method: 'POST', body: data }),
+  listLivestock: () => request('/api/shamba/livestock/list'),
+  getLivestockByOwner: (ownerId) => request(`/api/shamba/livestock/owner/${ownerId}`),
+  getLivestock: (passportId) => request(`/api/shamba/livestock/${passportId}`),
+  reportStolen: (passportId, data) => request(`/api/shamba/livestock/${passportId}/report-stolen`, { method: 'POST', body: data }),
+  addVaccination: (passportId, data) => request(`/api/shamba/livestock/${passportId}/vaccination`, { method: 'POST', body: data }),
+};

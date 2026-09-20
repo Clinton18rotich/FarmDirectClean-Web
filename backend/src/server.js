@@ -23,6 +23,7 @@ app.use('/api/farmer', require('./routes/farmer'));
 app.use('/api/rider', require('./routes/rider'));
 app.use('/api/delivery', require('./routes/delivery'));
 app.use('/api/webhook', require('./routes/webhook'));
+app.use('/api/shamba', require('./routes/shamba'));
 
 app.use((req, res) => {
   res.status(404).json({ success: false, message: 'Not found' });
