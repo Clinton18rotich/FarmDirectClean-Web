@@ -629,3 +629,223 @@ module.exports.getSlaughterRequest = getSlaughterRequest;
 module.exports._slaughterhouses = slaughterhouses;
 module.exports._slaughterRequests = slaughterRequests;
 module.exports._meatTokens = meatTokens;
+
+// ═════════════════════════════════════════════════════
+// MEAT CHAIN TRACKING (extends meat tokens)
+// ═════════════════════════════════════════════════════
+
+/**
+ * Receive meat at a handler (butchery/supermarket/restaurant)
+ * Updates the meat token with chain info
+ */
+function receiveMeatAtHandler(token, handler, notes) {
+  const record = meatTokens.get(token);
+  if (!record) return { success: false, message: 'Meat token not found' };
+  if (record.reported) return { success: false, message: 'This meat was reported as fraud' };
+  if (record.status === 'sold_to_consumer') return { success: false, message: 'Meat already sold' };
+  if (record.currentHolderId === handler.id) return { success: false, message: 'Already at this handler' };
+
+  // Initialize chain if not present
+  if (!record.chain) {
+    record.chain = [{
+      holder: 'slaughterhouse',
+      id: record.slaughterhouseId,
+      name: record.slaughterhouseName,
+      at: record.slaughteredAt,
+    }];
+  }
+
+  // Add handler to chain
+  record.chain.push({
+    holder: handler.type,
+    id: handler.id,
+    name: handler.businessName,
+    at: new Date().toISOString(),
+    notes: notes || null,
+  });
+
+  record.currentHolderId = handler.id;
+  record.currentHolderName = handler.businessName;
+  record.currentHolderType = handler.type;
+  record.currentHolderPhone = handler.ownerPhone;
+  record.status = 'at_handler';
+
+  persistSlaughter();
+  console.log('📦 Meat received:', token, 'at', handler.businessName);
+  return { success: true, meat: record };
+}
+
+/**
+ * Mark meat as sold to consumer
+ */
+function sellMeat(token, saleInfo) {
+  const record = meatTokens.get(token);
+  if (!record) return { success: false, message: 'Meat token not found' };
+  if (record.reported) return { success: false, message: 'Cannot sell reported meat' };
+  if (record.status === 'sold_to_consumer') return { success: false, message: 'Already sold' };
+
+  if (!record.chain) record.chain = [];
+  record.chain.push({
+    holder: 'consumer',
+    at: new Date().toISOString(),
+    notes: saleInfo?.notes || 'Sold to consumer',
+  });
+
+  record.status = 'sold_to_consumer';
+  record.soldAt = new Date().toISOString();
+  record.soldBy = record.currentHolderName;
+
+  persistSlaughter();
+  console.log('✅ Meat sold:', token);
+  return { success: true, meat: record };
+}
+
+/**
+ * Return/reject meat (back to slaughterhouse)
+ */
+function returnMeat(token, reason) {
+  const record = meatTokens.get(token);
+  if (!record) return { success: false, message: 'Meat token not found' };
+
+  if (!record.chain) record.chain = [];
+  record.chain.push({
+    holder: 'returned',
+    at: new Date().toISOString(),
+    notes: reason || 'Returned to slaughterhouse',
+  });
+
+  record.status = 'returned';
+  record.currentHolderId = record.slaughterhouseId;
+  record.currentHolderName = record.slaughterhouseName;
+  record.currentHolderType = 'slaughterhouse';
+  record.returnedAt = new Date().toISOString();
+  record.returnReason = reason || null;
+
+  persistSlaughter();
+  console.log('↩️  Meat returned:', token, '|', reason);
+  return { success: true, meat: record };
+}
+
+/**
+ * Get full chain for a meat token
+ */
+/**
+ * Mask phone for privacy: +254712345678 -> +25471****678
+ */
+function maskPhone(phone) {
+  if (!phone || phone.length < 8) return phone;
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length < 9) return phone;
+  return '+' + digits.slice(0, 5) + '****' + digits.slice(-3);
+}
+
+/**
+ * Calculate human-readable duration
+ */
+function humanDuration(fromIso, toIso) {
+  if (!fromIso) return null;
+  const end = toIso ? new Date(toIso).getTime() : Date.now();
+  const ms = end - new Date(fromIso).getTime();
+  const days = Math.floor(ms / (1000 * 60 * 60 * 24));
+  if (days < 1) return 'less than a day';
+  if (days < 30) return days + ' days';
+  const months = Math.floor(days / 30);
+  if (months < 24) return months + ' months';
+  return Math.floor(months / 12) + ' years';
+}
+
+/**
+ * Build source animal data for meat trace
+ */
+function buildSourceAnimalData(meatRecord) {
+  const animal = livestock.get(meatRecord.animalPassport);
+  if (!animal) {
+    return {
+      passportId: meatRecord.animalPassport,
+      type: meatRecord.animalType,
+      breed: meatRecord.animalBreed,
+      note: 'Animal record not available',
+    };
+  }
+
+  const ageAtSlaughter = meatRecord.slaughteredAt && animal.registeredAt
+    ? humanDuration(animal.registeredAt, meatRecord.slaughteredAt)
+    : 'unknown';
+
+  return {
+    passportId: animal.passportId,
+    type: animal.type,
+    breed: animal.breed,
+    age: animal.age || null,
+    ageRaised: ageAtSlaughter,
+    gender: animal.gender || null,
+    color: animal.color || null,
+    aiCoat: animal.aiCoat || null,
+    photoUrl: animal.photoUrl || null,
+    raisedAt: {
+      county: animal.location?.county || 'Unknown',
+      ward: animal.location?.ward || null,
+      area: animal.location?.area || animal.location?.locality || null,
+    },
+    farmer: {
+      name: animal.ownerName,
+      phone: maskPhone(animal.ownerPhone),
+      fullPhoneAvailable: false,
+    },
+    health: {
+      status: animal.health || 'unknown',
+      vaccinations: animal.vaccinations || [],
+      treatments: animal.treatments || [],
+      vaccinationCount: (animal.vaccinations || []).length,
+      treatmentCount: (animal.treatments || []).length,
+    },
+    ownershipHistory: animal.ownershipHistory || [],
+    ownerCount: (animal.ownershipHistory || []).length,
+    verification: {
+      recordHash: animal.recordHash,
+      registeredAt: animal.registeredAt,
+      verified: true,
+      verifiedBy: 'FarmDirect Kenya',
+      platform: 'Shamba & Mfugo Safi',
+    },
+  };
+}
+
+function getMeatChain(token) {
+  const record = meatTokens.get(token);
+  if (!record) return null;
+  const sourceAnimal = buildSourceAnimalData(record);
+
+  return {
+    token: record.token,
+    animalPassport: record.animalPassport,
+    animalType: record.animalType,
+    animalBreed: record.animalBreed,
+    farmerName: record.farmerName,
+    farmerPhone: record.farmerPhone,
+    slaughterhouseName: record.slaughterhouseName,
+    slaughteredAt: record.slaughteredAt,
+    currentHolder: record.currentHolderId ? {
+      id: record.currentHolderId,
+      name: record.currentHolderName,
+      type: record.currentHolderType,
+      phone: record.currentHolderPhone,
+    } : null,
+    status: record.status || 'at_slaughterhouse',
+    chain: record.chain || [{
+      holder: 'slaughterhouse',
+      id: record.slaughterhouseId,
+      name: record.slaughterhouseName,
+      at: record.slaughteredAt,
+    }],
+    reported: record.reported || false,
+    soldAt: record.soldAt || null,
+    soldBy: record.soldBy || null,
+    sourceAnimal: sourceAnimal,
+  };
+}
+
+module.exports.receiveMeatAtHandler = receiveMeatAtHandler;
+module.exports.sellMeat = sellMeat;
+module.exports.returnMeat = returnMeat;
+module.exports.getMeatChain = getMeatChain;

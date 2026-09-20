@@ -25,6 +25,7 @@ app.use('/api/delivery', require('./routes/delivery'));
 app.use('/api/webhook', require('./routes/webhook'));
 app.use('/api/shamba', require('./routes/shamba'));
 app.use('/api/slaughterhouse', require('./routes/slaughterhouse'));
+app.use('/api/meat-handler', require('./routes/meatHandler'));
 
 app.use((req, res) => {
   res.status(404).json({ success: false, message: 'Not found' });
