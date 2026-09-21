@@ -397,3 +397,454 @@ module.exports = {
   _witnesses: witnesses,
   _deedVault: deedVault,
 };
+
+// ═════════════════════════════════════════════════════
+// G4: EVICTION SOS BUTTON
+// ═════════════════════════════════════════════════════
+
+const emergencyContacts = storage.objectToMap(storage.load('land_emergency_contacts', {}));
+
+function persistSOS() {
+  storage.save('land_sos_alerts', storage.mapToObject(sosAlerts));
+  storage.save('land_emergency_contacts', storage.mapToObject(emergencyContacts));
+}
+
+/**
+ * Save emergency contacts for a farmer
+ */
+function saveEmergencyContacts(ownerId, contacts) {
+  emergencyContacts.set(ownerId, {
+    ownerId,
+    contacts: contacts || [],
+    updatedAt: new Date().toISOString(),
+  });
+  persistSOS();
+  console.log('📞 Emergency contacts saved for', ownerId);
+  return emergencyContacts.get(ownerId);
+}
+
+function getEmergencyContacts(ownerId) {
+  return emergencyContacts.get(ownerId) || { ownerId, contacts: [] };
+}
+
+/**
+ * Trigger eviction SOS
+ * Alerts: NLC + farmer's contacts + witnesses + admin + police
+ */
+async function triggerEvictionSOS(parcelId, data) {
+  const parcel = parcels.get(parcelId);
+  if (!parcel) return { error: 'Parcel not found' };
+
+  const id = 'SOS-' + Date.now().toString(36).toUpperCase();
+  const now = new Date().toISOString();
+
+  // Get all witnesses for this parcel
+  const parcelWitnesses = parcel.witnesses
+    .map(wid => witnesses.get(wid))
+    .filter(w => w && w.status === 'confirmed');
+
+  // Get farmer's emergency contacts
+  const emergency = getEmergencyContacts(parcel.ownerId);
+
+  // Build alert content
+  const landmarkInfo = `Parcel: ${parcelId}
+Owner: ${parcel.ownerName}
+Location: ${parcel.village || parcel.ward}, ${parcel.county}
+GPS: ${parcel.waypoints.length > 0 ? `${parcel.waypoints[0].lat}, ${parcel.waypoints[0].lng}` : 'Not recorded'}
+Area: ${parcel.areaHectares} ha
+Witnesses: ${parcelWitnesses.length} confirmed
+Landmark Hash: ${parcel.landmarkHash || 'N/A'}`;
+
+  const alertMessage = `🚨 EVICTION SOS — FARMDIRECT
+
+${parcel.ownerName} is being EVICTED from their land.
+${landmarkInfo}
+
+Reported: ${now}
+Reporter: ${data.reporterName || parcel.ownerName}
+Situation: ${data.situation || 'Eviction in progress'}
+
+This farmer has VERIFIED digital proof of ownership.
+Respond immediately.`;
+
+  // Compose recipients
+  const recipients = [];
+
+  // 1. National Land Commission (default)
+  recipients.push({
+    type: 'NLC',
+    name: 'National Land Commission',
+    phone: process.env.NLC_PHONE || '0700000000',
+  });
+
+  // 2. Farmer's emergency contacts
+  for (const contact of (emergency.contacts || [])) {
+    recipients.push({
+      type: 'emergency',
+      name: contact.name,
+      phone: contact.phone,
+      relationship: contact.relationship,
+    });
+  }
+
+  // 3. All confirmed witnesses
+  for (const w of parcelWitnesses) {
+    recipients.push({
+      type: 'witness',
+      name: w.name,
+      phone: w.phone,
+      relationship: w.relationship,
+    });
+  }
+
+  // 4. FarmDirect admin
+  recipients.push({
+    type: 'admin',
+    name: 'FarmDirect Admin',
+    phone: process.env.ADMIN_PHONE || '0700000001',
+  });
+
+  // 5. Local police (if county mapped)
+  const policeByCounty = {
+    'Bomet': '999', 'Nakuru': '999', 'Nairobi': '999',
+    'Kisumu': '999', 'Mombasa': '999',
+  };
+  recipients.push({
+    type: 'police',
+    name: `Police — ${parcel.county}`,
+    phone: policeByCounty[parcel.county] || '999',
+  });
+
+  // Send SMS to all
+  const alertLog = [];
+  for (const r of recipients) {
+    try {
+      await sms.sendSms(r.phone, alertMessage, {
+        type: 'eviction_sos',
+        sosId: id,
+        parcelId,
+        recipientType: r.type,
+      });
+      alertLog.push({
+        type: r.type,
+        name: r.name,
+        phone: r.phone,
+        status: 'sent',
+        sentAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      alertLog.push({
+        type: r.type,
+        name: r.name,
+        phone: r.phone,
+        status: 'failed',
+        error: err.message,
+      });
+    }
+  }
+
+  const sos = {
+    id,
+    parcelId,
+    ownerId: parcel.ownerId,
+    ownerName: parcel.ownerName,
+    county: parcel.county,
+    village: parcel.village || parcel.ward,
+    gps: parcel.waypoints.length > 0 ? parcel.waypoints[0] : null,
+    witnessCount: parcelWitnesses.length,
+    landmarkHash: parcel.landmarkHash,
+    reporterName: data.reporterName || parcel.ownerName,
+    reporterPhone: data.reporterPhone || parcel.ownerPhone,
+    situation: data.situation || 'Eviction in progress',
+    photoUrl: data.photoUrl || null,
+    alertLog,
+    totalAlerts: alertLog.filter(a => a.status === 'sent').length,
+    status: 'active',
+    triggeredAt: now,
+    resolvedAt: null,
+    resolutionNotes: null,
+  };
+
+  sosAlerts.set(id, sos);
+
+  // Mark parcel as disputed
+  parcel.status = 'disputed';
+  parcel.history.push({
+    action: 'eviction_sos_triggered',
+    at: now,
+    note: `SOS triggered. Alerts sent: ${sos.totalAlerts}`,
+  });
+
+  persist();
+  persistSOS();
+
+  console.log('');
+  console.log('🚨🚨🚨 EVICTION SOS TRIGGERED 🚨🚨🚨');
+  console.log('   Parcel:', parcelId);
+  console.log('   Owner:', parcel.ownerName);
+  console.log('   Alerts sent:', sos.totalAlerts);
+  console.log('   Recipients:', recipients.map(r => r.type).join(', '));
+  console.log('');
+
+  return { sos, parcel };
+}
+
+function getSOS(id) {
+  return sosAlerts.get(id);
+}
+
+function listSOSAlerts(filter = {}) {
+  let list = [...sosAlerts.values()];
+  if (filter.status) list = list.filter(s => s.status === filter.status);
+  if (filter.ownerId) list = list.filter(s => s.ownerId === filter.ownerId);
+  if (filter.county) list = list.filter(s => s.county === filter.county);
+  return list.sort((a, b) => new Date(b.triggeredAt) - new Date(a.triggeredAt));
+}
+
+function resolveSOS(id, resolutionNotes) {
+  const sos = sosAlerts.get(id);
+  if (!sos) return { error: 'SOS not found' };
+
+  sos.status = 'resolved';
+  sos.resolvedAt = new Date().toISOString();
+  sos.resolutionNotes = resolutionNotes || 'Situation resolved';
+
+  const parcel = parcels.get(sos.parcelId);
+  if (parcel && parcel.status === 'disputed') {
+    parcel.status = 'verified';  // Back to verified
+    parcel.history.push({
+      action: 'sos_resolved',
+      at: sos.resolvedAt,
+      note: sos.resolutionNotes,
+    });
+  }
+
+  persist();
+  persistSOS();
+
+  console.log('✅ SOS resolved:', id);
+  return { sos };
+}
+
+// ═════════════════════════════════════════════════════
+// G5: LAND-LIVESTOCK GPS MATCH
+// ═════════════════════════════════════════════════════
+
+/**
+ * Verify ownership by checking if owner's livestock are on the parcel
+ * Uses livestock registration location + parcel GPS boundary
+ */
+function landLivestockMatch(parcelId, livestockPassports) {
+  const parcel = parcels.get(parcelId);
+  if (!parcel) return { error: 'Parcel not found' };
+
+  const shamba = require('./shamba');
+  const animals = livestockPassports.map(pid => {
+    const a = shamba._livestock ? shamba._livestock.get(pid) : null;
+    return a ? { passportId: pid, animal: a } : { passportId: pid, notFound: true };
+  });
+
+  // Check each animal's location matches parcel
+  const matches = animals.map(({ passportId, animal, notFound }) => {
+    if (notFound) {
+      return { passportId, match: false, reason: 'Animal not found in system' };
+    }
+    if (animal.ownerId !== parcel.ownerId) {
+      return { passportId, match: false, reason: 'Animal owned by different person' };
+    }
+
+    // Simple location match: same county + ward
+    const sameCounty = animal.location?.county === parcel.county;
+    const sameWard = animal.location?.ward === parcel.ward;
+
+    if (sameCounty && sameWard) {
+      return {
+        passportId,
+        match: true,
+        animalType: animal.type,
+        animalBreed: animal.breed,
+        animalLocation: animal.location,
+      };
+    }
+
+    return {
+      passportId,
+      match: false,
+      reason: 'Animal located outside parcel',
+      animalLocation: animal.location,
+      parcelLocation: { county: parcel.county, ward: parcel.ward },
+    };
+  });
+
+  const matchCount = matches.filter(m => m.match).length;
+  const verification = matchCount >= 2 ? 'strong' 
+                     : matchCount === 1 ? 'moderate' 
+                     : 'weak';
+
+  return {
+    parcelId,
+    ownerName: parcel.ownerName,
+    parcelLocation: { county: parcel.county, ward: parcel.ward },
+    animalsChecked: animals.length,
+    matches: matchCount,
+    verification,
+    details: matches,
+    conclusion: matchCount >= 2 
+      ? `✅ VERIFIED: ${matchCount} animals confirmed at this parcel`
+      : matchCount === 1
+        ? `⚠️ WEAK: Only 1 animal confirmed at this parcel`
+        : `❌ NOT VERIFIED: No animals found at this parcel`,
+  };
+}
+
+// ═════════════════════════════════════════════════════
+// G6: RENTAL GRAZING LEASE
+// ═════════════════════════════════════════════════════
+
+const leases = storage.objectToMap(storage.load('land_leases', {}));
+
+function persistLeases() {
+  storage.save('land_leases', storage.mapToObject(leases));
+}
+
+function createLease(data) {
+  const id = 'LEASE-' + Date.now().toString(36).toUpperCase();
+  const now = new Date().toISOString();
+
+  const lease = {
+    id,
+    // Land
+    parcelId: data.parcelId,
+    // Parties
+    landownerId: data.landownerId,
+    landownerName: data.landownerName,
+    landownerPhone: data.landownerPhone,
+    tenantId: data.tenantId,
+    tenantName: data.tenantName,
+    tenantPhone: data.tenantPhone,
+    // Terms
+    purpose: data.purpose || 'Grazing',
+    monthlyFee: parseInt(data.monthlyFee) || 0,
+    startDate: data.startDate,
+    endDate: data.endDate,
+    terms: data.terms || '',
+    // Approval
+    status: 'pending_approval',
+    approvalCode: Math.random().toString(36).slice(2, 8).toUpperCase(),
+    // Meta
+    createdAt: now,
+    approvedAt: null,
+    rejectedAt: null,
+    terminatedAt: null,
+    history: [{
+      action: 'created',
+      at: now,
+      note: `Lease created by ${data.tenantName}`,
+    }],
+  };
+
+  leases.set(id, lease);
+
+  // SMS to landowner for approval
+  const smsMessage = `FarmDirect Lease Request
+${data.tenantName} wants to lease your land for ${lease.purpose}
+From: ${lease.startDate} to: ${lease.endDate}
+Fee: KES ${lease.monthlyFee}/month
+
+Reply YES ${lease.approvalCode} to approve
+Reply NO to reject`;
+
+  sms.sendSms(data.landownerPhone, smsMessage, {
+    type: 'lease_request',
+    leaseId: id,
+  }).catch(err => console.error(err.message));
+
+  persistLeases();
+  console.log('📄 Lease created:', id, '|', data.tenantName, '→', data.landownerName);
+  return lease;
+}
+
+function approveLease(leaseId, code) {
+  const lease = leases.get(leaseId);
+  if (!lease) return { error: 'Lease not found' };
+  if (lease.approvalCode !== code) return { error: 'Invalid code' };
+
+  lease.status = 'active';
+  lease.approvedAt = new Date().toISOString();
+  lease.history.push({
+    action: 'approved',
+    at: lease.approvedAt,
+    note: 'Landowner approved',
+  });
+
+  persistLeases();
+  console.log('✅ Lease approved:', leaseId);
+  return { lease };
+}
+
+function rejectLease(leaseId, reason) {
+  const lease = leases.get(leaseId);
+  if (!lease) return { error: 'Lease not found' };
+
+  lease.status = 'rejected';
+  lease.rejectedAt = new Date().toISOString();
+  lease.rejectionReason = reason || 'Rejected';
+  lease.history.push({
+    action: 'rejected',
+    at: lease.rejectedAt,
+    note: reason || 'Rejected by landowner',
+  });
+
+  persistLeases();
+  console.log('❌ Lease rejected:', leaseId);
+  return { lease };
+}
+
+function listLeases(filter = {}) {
+  let list = [...leases.values()];
+  if (filter.landownerId) list = list.filter(l => l.landownerId === filter.landownerId);
+  if (filter.tenantId) list = list.filter(l => l.tenantId === filter.tenantId);
+  if (filter.parcelId) list = list.filter(l => l.parcelId === filter.parcelId);
+  if (filter.status) list = list.filter(l => l.status === filter.status);
+  return list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+
+// ═════════════════════════════════════════════════════
+// G7: NOMADIC HERD EXEMPTION
+// ═════════════════════════════════════════════════════
+
+function markNomadic(passportId, data) {
+  const shamba = require('./shamba');
+  const animal = shamba._livestock ? shamba._livestock.get(passportId) : null;
+  if (!animal) return { error: 'Animal not found' };
+
+  animal.nomadic = {
+    enabled: true,
+    reason: data.reason || 'Seasonal grazing',
+    allowedCounties: data.allowedCounties || [],
+    seasonStart: data.seasonStart || null,
+    seasonEnd: data.seasonEnd || null,
+    approvedBy: data.approvedBy || 'owner',
+    enabledAt: new Date().toISOString(),
+  };
+
+  console.log('🐪 Animal marked nomadic:', passportId, '|', animal.nomadic.reason);
+  return { animal };
+}
+
+// Add to exports
+module.exports.saveEmergencyContacts = saveEmergencyContacts;
+module.exports.getEmergencyContacts = getEmergencyContacts;
+module.exports.triggerEvictionSOS = triggerEvictionSOS;
+module.exports.getSOS = getSOS;
+module.exports.listSOSAlerts = listSOSAlerts;
+module.exports.resolveSOS = resolveSOS;
+module.exports.landLivestockMatch = landLivestockMatch;
+module.exports.createLease = createLease;
+module.exports.approveLease = approveLease;
+module.exports.rejectLease = rejectLease;
+module.exports.listLeases = listLeases;
+module.exports.markNomadic = markNomadic;
+module.exports._sosAlerts = sosAlerts;
+module.exports._emergencyContacts = emergencyContacts;
+module.exports._leases = leases;

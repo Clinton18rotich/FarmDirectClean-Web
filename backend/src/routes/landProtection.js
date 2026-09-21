@@ -131,3 +131,127 @@ router.post('/witnesses/:id/decline', (req, res) => {
 });
 
 module.exports = router;
+
+
+// ═══════════════════════════════════════════════════
+// G4: EVICTION SOS
+// ═══════════════════════════════════════════════════
+
+router.post('/parcels/:id/sos', async (req, res) => {
+  try {
+    const { reporterName, reporterPhone, situation, photoUrl } = req.body;
+    const result = await landProtection.triggerEvictionSOS(req.params.id, {
+      reporterName,
+      reporterPhone: reporterPhone ? normalizeKenyaPhone(reporterPhone) : undefined,
+      situation,
+      photoUrl,
+    });
+    if (result.error) return res.status(400).json({ success: false, message: result.error });
+    res.json({ success: true, ...result });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.get('/sos/list', (req, res) => {
+  res.json({
+    success: true,
+    alerts: landProtection.listSOSAlerts({
+      status: req.query.status,
+      ownerId: req.query.ownerId,
+      county: req.query.county,
+    }),
+  });
+});
+
+router.get('/sos/:id', (req, res) => {
+  const sos = landProtection.getSOS(req.params.id);
+  if (!sos) return res.status(404).json({ success: false, message: 'SOS not found' });
+  res.json({ success: true, sos });
+});
+
+router.post('/sos/:id/resolve', (req, res) => {
+  const result = landProtection.resolveSOS(req.params.id, req.body.notes);
+  if (result.error) return res.status(400).json({ success: false, message: result.error });
+  res.json({ success: true, ...result });
+});
+
+router.get('/emergency-contacts/:ownerId', (req, res) => {
+  res.json({ success: true, ...landProtection.getEmergencyContacts(req.params.ownerId) });
+});
+
+router.post('/emergency-contacts/:ownerId', (req, res) => {
+  const result = landProtection.saveEmergencyContacts(req.params.ownerId, req.body.contacts);
+  res.json({ success: true, ...result });
+});
+
+// ═══════════════════════════════════════════════════
+// G5: LAND-LIVESTOCK MATCH
+// ═══════════════════════════════════════════════════
+
+router.post('/parcels/:id/verify-with-livestock', (req, res) => {
+  const { livestockPassports } = req.body;
+  if (!livestockPassports || !Array.isArray(livestockPassports)) {
+    return res.status(400).json({ success: false, message: 'livestockPassports array required' });
+  }
+  const result = landProtection.landLivestockMatch(req.params.id, livestockPassports);
+  if (result.error) return res.status(400).json({ success: false, message: result.error });
+  res.json({ success: true, ...result });
+});
+
+// ═══════════════════════════════════════════════════
+// G6: RENTAL GRAZING LEASE
+// ═══════════════════════════════════════════════════
+
+router.post('/leases/create', (req, res) => {
+  try {
+    const { parcelId, landownerId, landownerName, landownerPhone, tenantId, tenantName, tenantPhone, purpose, monthlyFee, startDate, endDate, terms } = req.body;
+    if (!landownerName || !landownerPhone || !tenantName || !tenantPhone) {
+      return res.status(400).json({ success: false, message: 'Landowner and tenant required' });
+    }
+    const lease = landProtection.createLease({
+      parcelId, landownerId, landownerName,
+      landownerPhone: normalizeKenyaPhone(landownerPhone),
+      tenantId, tenantName,
+      tenantPhone: normalizeKenyaPhone(tenantPhone),
+      purpose, monthlyFee, startDate, endDate, terms,
+    });
+    res.json({ success: true, lease });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.post('/leases/:id/approve', (req, res) => {
+  const result = landProtection.approveLease(req.params.id, req.body.code);
+  if (result.error) return res.status(400).json({ success: false, message: result.error });
+  res.json({ success: true, ...result });
+});
+
+router.post('/leases/:id/reject', (req, res) => {
+  const result = landProtection.rejectLease(req.params.id, req.body.reason);
+  if (result.error) return res.status(400).json({ success: false, message: result.error });
+  res.json({ success: true, ...result });
+});
+
+router.get('/leases/list', (req, res) => {
+  res.json({
+    success: true,
+    leases: landProtection.listLeases({
+      landownerId: req.query.landownerId,
+      tenantId: req.query.tenantId,
+      parcelId: req.query.parcelId,
+      status: req.query.status,
+    }),
+  });
+});
+
+// ═══════════════════════════════════════════════════
+// G7: NOMADIC HERD EXEMPTION
+// ═══════════════════════════════════════════════════
+
+router.post('/livestock/:passportId/nomadic', (req, res) => {
+  const result = landProtection.markNomadic(req.params.passportId, req.body);
+  if (result.error) return res.status(400).json({ success: false, message: result.error });
+  res.json({ success: true, ...result });
+});
