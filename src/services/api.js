@@ -257,3 +257,28 @@ api.landProtection = {
   // Nomadic
   markNomadic: (passportId, data) => request(`/api/land-protection/livestock/${passportId}/nomadic`, { method: 'POST', body: data }),
 };
+
+
+// KYC — Identity verification + seller tiers
+api.kyc = {
+  // Public
+  config: () => request('/api/kyc/config'),
+  tiers: () => request('/api/kyc/tiers'),
+
+  // Verification flow
+  createRequest: (data) => request('/api/kyc/request', { method: 'POST', body: data }),
+  confirmPayment: (id, paymentRef) => request(`/api/kyc/${id}/confirm-payment`, { method: 'POST', body: { paymentRef } }),
+  verify: (data) => request('/api/kyc/verify', { method: 'POST', body: data }),
+
+  // Status
+  status: (userId) => request(`/api/kyc/status/${userId}`),
+  tier: (userId) => request(`/api/kyc/tier/${userId}`),
+  canSell: (userId, amount) => request(`/api/kyc/can-sell/${userId}`, { method: 'POST', body: { amount } }),
+
+  // Admin
+  stats: () => request('/api/kyc/stats'),
+  list: (filter = {}) => {
+    const params = new URLSearchParams(filter).toString();
+    return request(`/api/kyc/list${params ? '?' + params : ''}`);
+  },
+};

@@ -10,6 +10,7 @@ import React, { useState, useEffect } from 'react';
 import { ALL_PRODUCTS, CATEGORIES, CHAT_FARMERS, RIDERS } from './data/farmData';
 import './App.css';
 import AlertsScreen from './components/AlertsScreen';
+import KYCModal from './components/KYCModal';
 
 export default function App() {
   const [tab, setTab] = useState(0);
@@ -22,6 +23,9 @@ export default function App() {
   const [showCheckout, setShowCheckout] = useState(false);
   const [showBusiness, setShowBusiness] = useState(false);
   const [logoTaps, setLogoTaps] = useState(0);
+  const [showKYC, setShowKYC] = useState(false);
+  const [kycVerified, setKycVerified] = useState(false);
+  const [kycTier, setKycTier] = useState(null);
 
   const [myFarmer, setMyFarmer] = useState(null);
   const [justRegistered, setJustRegistered] = useState(false);
@@ -76,6 +80,22 @@ export default function App() {
     } catch (e) {}
     loadRegisteredFarmers();
   }, []);
+
+  // Load KYC status when farmer is set
+  useEffect(() => {
+    const phone = myFarmer?.farmer?.phone;
+    if (!phone) return;
+
+    fetch(`http://localhost:3001/api/kyc/status/${encodeURIComponent(phone)}`)
+      .then(r => r.json())
+      .then(data => setKycVerified(data.verified || false))
+      .catch(() => {});
+
+    fetch(`http://localhost:3001/api/kyc/tier/${encodeURIComponent(phone)}`)
+      .then(r => r.json())
+      .then(data => setKycTier(data.tier || null))
+      .catch(() => {});
+  }, [myFarmer]);
 
   const handleLogoTap = () => {
     const next = logoTaps + 1;
@@ -153,10 +173,13 @@ export default function App() {
           <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
             <div onClick={handleLogoTap} style={{width:36,height:36,background:'white',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,cursor:'pointer',userSelect:'none'}}>🌱</div>
             <div>
-              <h1 style={{fontSize:18,margin:0}}>FarmDirect</h1>
+              <h1 style={{fontSize:18,margin:0}}>
+                FarmDirect
+                {kycVerified && <span style={{marginLeft:6,fontSize:12,background:'#4CAF50',color:'white',padding:'2px 6px',borderRadius:10}}>✅ VERIFIED</span>}
+              </h1>
               <p style={{fontSize:10,margin:0,opacity:.8}}>
                 {myFarmer 
-                  ? `👨‍🌾 ${myFarmer.farmer?.fullName || 'Farmer'} • ${displayProducts.length} products live`
+                  ? `👨‍🌾 ${myFarmer.farmer?.fullName || 'Farmer'} • ${displayProducts.length} products live${kycTier ? ' • ' + kycTier.label : ''}`
                   : isDemoMode 
                     ? `${displayProducts.length} demo products • Register to go live`
                     : `${displayProducts.length} products • From ${new Set(registeredProducts.map(p => p.farmer)).size} real farmers`}
@@ -265,6 +288,51 @@ export default function App() {
               </div>
             )}
 
+            {/* KYC VERIFICATION BANNER */}
+            {myFarmer && !kycVerified && (
+              <div style={{
+                margin:'0 12px 12px', background:'linear-gradient(135deg, #1565C0, #0D47A1)',
+                borderRadius:12, padding:14, color:'white',
+                border:'1px solid #0D47A1'
+              }}>
+                <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
+                  <span style={{fontSize:28}}>🪪</span>
+                  <div style={{flex:1}}>
+                    <strong style={{fontSize:14}}>Get Verified to Sell More</strong>
+                    <p style={{fontSize:11,margin:'2px 0 0',opacity:.9}}>
+                      Unlock KES 500,000/month + verified badge
+                    </p>
+                  </div>
+                </div>
+                <button onClick={() => setShowKYC(true)} style={{
+                  width:'100%', padding:10, background:'white', color:'#1565C0',
+                  border:'none', borderRadius:8, fontSize:13, fontWeight:'bold',
+                  cursor:'pointer'
+                }}>
+                  🪪 Verify Now — KES 500
+                </button>
+              </div>
+            )}
+
+            {/* VERIFIED SELLER BADGE */}
+            {myFarmer && kycVerified && (
+              <div style={{
+                margin:'0 12px 12px', background:'#E8F5E9', 
+                borderRadius:12, padding:12, display:'flex', alignItems:'center', gap:10,
+                border:'1px solid #A5D6A7'
+              }}>
+                <span style={{fontSize:24}}>✅</span>
+                <div style={{flex:1}}>
+                  <strong style={{fontSize:13,color:'#2E7D32'}}>
+                    Verified Seller {kycTier ? '• ' + kycTier.label : ''}
+                  </strong>
+                  <p style={{fontSize:11,margin:'2px 0 0',color:'#666'}}>
+                    {kycTier ? `Sell up to KES ${kycTier.monthlyLimit.toLocaleString()}/month` : 'Full selling limits unlocked'}
+                  </p>
+                </div>
+              </div>
+            )}
+
             {myFarmer && (
               <div style={{margin:'0 12px 12px', background:'#F0F4F8', borderRadius:12, padding:14, border:'1px solid #E0E0E0'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
@@ -355,6 +423,27 @@ export default function App() {
             <button onClick={() => setCart([])} style={{background:'none',border:'1px solid #C62828',color:'#C62828',padding:8,borderRadius:8,width:'100%',marginTop:4,cursor:'pointer'}}>Clear</button>
           </div>
         </div>
+      )}
+
+      {/* KYC MODAL */}
+      {showKYC && (
+        <KYCModal 
+          userId={myFarmer?.farmer?.phone}
+          userType="farmer"
+          userName={myFarmer?.farmer?.fullName}
+          userPhone={myFarmer?.farmer?.phone}
+          onClose={() => setShowKYC(false)}
+          onVerified={(v) => {
+            setKycVerified(true);
+            setShowKYC(false);
+            alert('✅ You are now a Verified Seller!');
+            // Reload tier
+            fetch(`http://localhost:3001/api/kyc/tier/${encodeURIComponent(myFarmer?.farmer?.phone)}`)
+              .then(r => r.json())
+              .then(data => setKycTier(data.tier || null))
+              .catch(() => {});
+          }}
+        />
       )}
 
       {showCheckout && (
