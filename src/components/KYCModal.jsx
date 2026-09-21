@@ -62,24 +62,65 @@ export default function KYCModal({ userId, userType, userName, userPhone, onClos
     setLoading(true);
     setStep('verifying');
     try {
-      // In production: this would trigger M-Pesa STK push
-      // For now (mock mode): simulate payment confirmation
-      const result = await api.kyc.confirmPayment(kycId, 'MPESA-SIMULATED-' + Date.now());
+      // Trigger M-Pesa STK push (backend auto-simulates when MPESA_ENV is unconfigured)
+      const result = await api.kyc.pay(kycId, form.phone);
 
       if (!result.success) throw new Error(result.message);
 
-      if (result.verification.verified) {
-        setStep('done');
-        if (onVerified) onVerified(result.verification);
-      } else {
-        setError(result.verification.reason || 'Verification failed');
-        setStep('form');
+      // Simulated mode: backend already ran verification, we're done
+      if (result.mode === 'not_configured') {
+        if (result.verification?.verified) {
+          setStep('done');
+          if (onVerified) onVerified(result.verification);
+        } else {
+          setError(result.verification?.reason || 'Verification failed');
+          setStep('form');
+        }
+        setLoading(false);
+        return;
       }
+
+      // Real STK pushed — poll until the Safaricom callback lands
+      if (!result.stk) throw new Error('No STK push sent — check phone number');
+      pollStatus(kycId, 0);
     } catch (err) {
       setError(err.message);
       setStep('payment');
-    } finally {
       setLoading(false);
+    }
+  };
+
+  const pollStatus = async (id, attempt) => {
+    const MAX = 20;         // 20 × 3s = 60s max wait
+    const INTERVAL = 3000;
+
+    if (attempt >= MAX) {
+      setError('Payment not confirmed after 60s. If you paid, wait a moment and try again.');
+      setStep('payment');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const s = await api.kyc.statusById(id);
+
+      if (s.status === 'verified') {
+        setStep('done');
+        setLoading(false);
+        if (onVerified) onVerified(s);
+        return;
+      }
+      if (s.status === 'payment_failed' || s.status === 'failed') {
+        setError(s.reason || 'Verification failed');
+        setStep('form');
+        setLoading(false);
+        return;
+      }
+      // Still awaiting — poll again
+      setTimeout(() => pollStatus(id, attempt + 1), INTERVAL);
+    } catch (err) {
+      // Transient network error — keep polling
+      setTimeout(() => pollStatus(id, attempt + 1), INTERVAL);
     }
   };
 
@@ -186,16 +227,17 @@ export default function KYCModal({ userId, userType, userName, userPhone, onClos
             </button>
 
             <p style={{fontSize:10,color:'#999',textAlign:'center',marginTop:12}}>
-              In production, this triggers an M-Pesa STK push to your phone.
+              You'll receive an M-Pesa prompt on your phone. Enter your PIN to pay.
             </p>
           </>
         )}
 
         {step === 'verifying' && (
           <div style={{textAlign:'center',padding:'40px 20px'}}>
-            <span style={{fontSize:60}}>🔍</span>
-            <h3 style={{margin:'12px 0 4px',color:'#1565C0'}}>Verifying...</h3>
-            <p style={{fontSize:12,color:'#666'}}>Checking against Kenya IPRS database</p>
+            <span style={{fontSize:60}}>📱</span>
+            <h3 style={{margin:'12px 0 4px',color:'#1565C0'}}>Waiting for M-Pesa...</h3>
+            <p style={{fontSize:12,color:'#666'}}>Enter your M-Pesa PIN on your phone</p>
+            <p style={{fontSize:11,color:'#999',marginTop:16}}>This usually takes 10–30 seconds</p>
           </div>
         )}
 

@@ -267,6 +267,11 @@ api.kyc = {
 
   // Verification flow
   createRequest: (data) => request('/api/kyc/request', { method: 'POST', body: data }),
+  // M-Pesa STK push (real or simulated based on backend MPESA_ENV)
+  pay: (id, phone) => request(`/api/kyc/${id}/pay`, { method: 'POST', body: { phone } }),
+  statusById: (id) => request(`/api/kyc/${id}/status`),
+
+  // Legacy: manual confirm (kept as emergency fallback)
   confirmPayment: (id, paymentRef) => request(`/api/kyc/${id}/confirm-payment`, { method: 'POST', body: { paymentRef } }),
   verify: (data) => request('/api/kyc/verify', { method: 'POST', body: data }),
 

@@ -195,3 +195,56 @@ router.get('/tiers', (req, res) => {
     kycFee: kyc.KYC_FEE_KES,
   });
 });
+
+
+// ═══════════════════════════════════════════════════
+// M-PESA STK PUSH PAYMENT
+// ═══════════════════════════════════════════════════
+
+/**
+ * Initiate M-Pesa STK push for KYC fee
+ * User receives prompt on their phone
+ */
+router.post('/:id/pay', async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) {
+      return res.status(400).json({ success: false, message: 'Phone number required' });
+    }
+
+    const result = await kyc.initiateKYCPayment(req.params.id, phone);
+
+    if (result.error) {
+      return res.status(400).json({ success: false, message: result.error });
+    }
+
+    res.json({
+      success: true,
+      mode: require('../services/mpesa').getMode(),
+      verification: result.record,
+      stk: result.stk || null,
+      message: result.stk 
+        ? 'Check your phone for the M-Pesa prompt'
+        : 'Payment simulated (M-Pesa not configured)',
+    });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * Poll KYC status (frontend calls this after STK)
+ */
+router.get('/:id/status', (req, res) => {
+  const v = kyc.getVerification(req.params.id);
+  if (!v) return res.status(404).json({ success: false, message: 'Verification not found' });
+
+  res.json({
+    success: true,
+    status: v.status,
+    verified: v.verified,
+    reason: v.reason,
+    paidAt: v.paidAt,
+    paymentRef: v.paymentRef,
+  });
+});

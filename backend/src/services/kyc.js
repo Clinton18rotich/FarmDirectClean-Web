@@ -10,6 +10,7 @@
  */
 
 const storage = require('./storage');
+const mpesa = require('./mpesa');
 
 const verifications = storage.objectToMap(storage.load('kyc_verifications', {}));
 
@@ -502,3 +503,101 @@ module.exports = {
   getProvider: () => getProvider().name,
   _verifications: verifications,
 };
+
+
+// ═════════════════════════════════════════════════════
+// STK PUSH PAYMENT
+// ═════════════════════════════════════════════════════
+
+/**
+ * Initiate M-Pesa STK push for KYC fee
+ * Called after user submits ID
+ */
+async function initiateKYCPayment(verificationId, phone) {
+  const record = verifications[verificationId];
+  if (!record) return { error: 'Verification not found' };
+  if (record.status !== 'pending_payment') {
+    return { error: 'Already processed: ' + record.status };
+  }
+
+  // If M-Pesa not configured, simulate success (dev mode)
+  if (!mpesa.isConfigured()) {
+    console.log('⚠️  M-Pesa not configured — simulating payment success');
+    record.status = 'paid';
+    record.paidAt = new Date().toISOString();
+    record.paymentRef = 'SIMULATED-' + Date.now();
+    persist();
+
+    // Run verification immediately
+    return await runVerification(verificationId);
+  }
+
+  // Real STK push
+  try {
+    const result = await mpesa.stkPush({
+      phone,
+      amount: record.fee,
+      accountRef: record.id,
+      description: 'FarmDirect KYC verification',
+    });
+
+    // Store the CheckoutRequestID for matching callback
+    record.checkoutRequestId = result.CheckoutRequestID;
+    record.merchantRequestId = result.MerchantRequestID;
+    record.stkInitiatedAt = new Date().toISOString();
+    record.status = 'awaiting_payment';
+    persist();
+
+    console.log('📱 KYC STK pushed:', verificationId, '| CheckoutID:', result.CheckoutRequestID);
+
+    return {
+      record,
+      stk: {
+        checkoutRequestId: result.CheckoutRequestID,
+        customerMessage: result.CustomerMessage,
+        responseCode: result.ResponseCode,
+      },
+    };
+  } catch (err) {
+    console.error('❌ STK push failed:', err.message);
+    return { error: 'Failed to send M-Pesa prompt: ' + err.message };
+  }
+}
+
+/**
+ * Confirm payment from M-Pesa callback
+ * Matches by CheckoutRequestID (never by phone — Safaricom masks it)
+ */
+async function confirmPaymentFromCallback(checkoutRequestId, callbackData) {
+  const record = Object.values(verifications).find(
+    v => v.checkoutRequestId === checkoutRequestId && v.status === 'awaiting_payment'
+  );
+
+  if (!record) {
+    console.warn('⚠️  KYC callback for unknown CheckoutRequestID:', checkoutRequestId);
+    return { error: 'No matching KYC request' };
+  }
+
+  if (!callbackData.success) {
+    record.status = 'payment_failed';
+    record.paymentFailureReason = callbackData.resultDesc;
+    persist();
+    console.log('❌ KYC payment failed:', record.id, '|', callbackData.resultDesc);
+    return { record };
+  }
+
+  // Payment successful
+  record.status = 'paid';
+  record.paidAt = new Date().toISOString();
+  record.paymentRef = callbackData.mpesaReceipt;
+  record.paidAmount = callbackData.amount;
+  persist();
+
+  console.log('💰 KYC payment received:', record.id, '| Receipt:', callbackData.mpesaReceipt, '| KES', callbackData.amount);
+
+  // Run IPRS verification
+  return await runVerification(record.id);
+}
+
+module.exports.initiateKYCPayment = initiateKYCPayment;
+module.exports.confirmPaymentFromCallback = confirmPaymentFromCallback;

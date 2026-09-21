@@ -108,4 +108,57 @@ router.get('/sms-log', (req, res) => {
   res.json({ success: true, stats: sms.getStats(), messages: sms.getSentMessages(50) });
 });
 
+
+/**
+ * POST /api/webhook/mpesa
+ * Safaricom Daraja STK callback
+ * Routes payment results to the KYC service
+ */
+router.post('/mpesa', (req, res) => {
+  // Respond 200 immediately — Safaricom retries on timeout
+  res.json({ ResultCode: 0, ResultDesc: 'OK' });
+
+  const cb = req.body?.Body?.stkCallback;
+  if (!cb) {
+    console.warn('⚠️  Invalid M-Pesa callback payload');
+    return;
+  }
+
+  console.log('');
+  console.log('📞 M-Pesa callback received');
+  console.log('   CheckoutRequestID:', cb.CheckoutRequestID);
+  console.log('   ResultCode:', cb.ResultCode, '|', cb.ResultDesc);
+  console.log('');
+
+  // Parse via mpesa service
+  let parsed = null;
+  try {
+    const mpesa = require('../services/mpesa');
+    parsed = mpesa.parseCallback(req.body);
+  } catch (err) {
+    console.error('❌ Failed to parse callback:', err.message);
+    return;
+  }
+
+  if (!parsed) return;
+
+  // Route to KYC service
+  try {
+    const kyc = require('../services/kyc');
+    kyc.confirmPaymentFromCallback(parsed.checkoutRequestId, parsed)
+      .then(result => {
+        if (result?.error) {
+          console.warn('⚠️  KYC callback:', result.error);
+        } else if (result?.record) {
+          console.log('✅ KYC verification:', result.record.status);
+        }
+      })
+      .catch(err => console.error('❌ KYC callback error:', err.message));
+  } catch (err) {
+    console.error('❌ Callback handler error:', err.message);
+  }
+
+  // TODO: Route to escrow service once it has a handleMpesaCallback()
+});
+
 module.exports = router;
