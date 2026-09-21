@@ -26,6 +26,7 @@ app.use('/api/webhook', require('./routes/webhook'));
 app.use('/api/shamba', require('./routes/shamba'));
 app.use('/api/vet', require('./routes/vet'));
 app.use('/api/land-protection', require('./routes/landProtection'));
+app.use('/api/kyc', require('./routes/kyc'));
 app.use('/api/pricing', require('./routes/pricing'));
 app.use('/api/discount', require('./routes/discount'));
 app.use('/api/slaughterhouse', require('./routes/slaughterhouse'));
