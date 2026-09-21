@@ -207,3 +207,26 @@ Inside `src/components/ShambaSafi.jsx` (2043 lines):
 - Any console errors?
 
 Then push to GitHub.
+
+## Session Update — Latest
+
+**Added since last update:**
+- KYC service (backend/src/services/kyc.js) with payment gating
+- KYC routes (backend/src/routes/kyc.js) — 10 endpoints
+- Seller tiers: Basic (free, KES 5K) / Verified (KES 500, KES 500K) / Premium (KES 200/mo, KES 5M)
+- Frontend Module G (Land Sovereignty) — complete and pushed
+
+**Frontend KYC integration NOT done yet** — this is the next task:
+1. KYC modal with ID input
+2. M-Pesa STK push for KES 500
+3. Verified badge on profile
+4. Seller tier display in dashboard
+5. Gate listings > KES 5,000 behind KYC
+
+**Backend KYC provider:** currently `mock` mode (in .env)
+To go live: sign up at didit.me, set KYC_PROVIDER=didit, DIDIT_API_KEY=xxx
+
+**Latest commits:**
+- 1735b3d — Frontend Module G (Land Sovereignty)
+- 4c42612 — KYC + Payment Gating + Seller Tiers
+- 4e38966 — Project Context Document
