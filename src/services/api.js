@@ -215,6 +215,9 @@ api.landProtection = {
     return request(`/api/land-protection/parcels/list${params ? '?' + params : ''}`);
   },
   getParcel: (id) => request(`/api/land-protection/parcels/${id}`),
+  payParcel: (id, phone) => request(`/api/land-protection/parcels/${id}/pay`, { method: 'POST', body: { phone } }),
+  upgradeParcel: (id, phone) => request(`/api/land-protection/parcels/${id}/upgrade`, { method: 'POST', body: { phone } }),
+  parcelStatus: (id) => request(`/api/land-protection/parcels/${id}/status`),
 
   // Title deed vault
   uploadTitleDeed: (id, data) => request(`/api/land-protection/parcels/${id}/title-deed`, { method: 'POST', body: data }),

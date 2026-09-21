@@ -158,7 +158,24 @@ router.post('/mpesa', (req, res) => {
     console.error('❌ Callback handler error:', err.message);
   }
 
-  // TODO: Route to escrow service once it has a handleMpesaCallback()
+  // Route to Land Protection (parcel registration fee — KES 500 / premium KES 2000)
+  try {
+    const land = require('../services/landProtection');
+    land.confirmParcelPayment(parsed.checkoutRequestId, parsed)
+      .then(r => {
+        if (r?.error) {
+          console.warn('ℹ️  Land callback (may be non-land txn):', r.error);
+        } else if (r?.record) {
+          console.log('✅ Land parcel:', r.record.status, '| tier:', r.record.tier);
+        }
+      })
+      .catch(err => console.error('❌ Land callback error:', err.message));
+  } catch (err) {
+    console.error('❌ Land callback route error:', err.message);
+  }
+
+  // NOTE: Order escrow is handled entirely by eConfirm (see services/econfirm.js).
+  // The two money flows do not intersect.
 });
 
 module.exports = router;

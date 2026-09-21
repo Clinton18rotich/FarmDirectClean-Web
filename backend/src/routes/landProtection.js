@@ -130,6 +130,80 @@ router.post('/witnesses/:id/decline', (req, res) => {
   res.json({ success: true, ...result });
 });
 
+
+// ═══════════════════════════════════════════════════
+// G7: PARCEL PAYMENT (KES 500 basic / KES 2000 premium)
+// ═══════════════════════════════════════════════════
+
+/**
+ * Pay KES 500 registration fee for a parcel
+ */
+router.post('/parcels/:id/pay', async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) return res.status(400).json({ success: false, message: 'Phone required' });
+
+    const result = await landProtection.initiateParcelPayment(req.params.id, normalizeKenyaPhone(phone));
+    if (result.error) return res.status(400).json({ success: false, message: result.error });
+
+    const mpesa = require('../services/mpesa');
+    res.json({
+      success: true,
+      mode: mpesa.getMode(),
+      parcel: result.record,
+      stk: result.stk || null,
+      message: result.stk
+        ? 'Check your phone for the M-Pesa prompt'
+        : 'Payment simulated (M-Pesa not configured)',
+    });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * Upgrade a paid parcel to premium (KES 2000)
+ */
+router.post('/parcels/:id/upgrade', async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) return res.status(400).json({ success: false, message: 'Phone required' });
+
+    const result = await landProtection.initiatePremiumUpgrade(req.params.id, normalizeKenyaPhone(phone));
+    if (result.error) return res.status(400).json({ success: false, message: result.error });
+
+    const mpesa = require('../services/mpesa');
+    res.json({
+      success: true,
+      mode: mpesa.getMode(),
+      parcel: result.record,
+      stk: result.stk || null,
+      message: result.stk
+        ? 'Check your phone for the M-Pesa prompt'
+        : 'Premium upgrade simulated (M-Pesa not configured)',
+    });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * Poll parcel payment status
+ */
+router.get('/parcels/:id/status', (req, res) => {
+  const parcel = landProtection.getParcel(req.params.id);
+  if (!parcel) return res.status(404).json({ success: false, message: 'Parcel not found' });
+
+  res.json({
+    success: true,
+    status: parcel.status,
+    feePaid: parcel.feePaid,
+    tier: parcel.tier,
+    paymentRef: parcel.paymentRef,
+    premiumPaidAt: parcel.premiumPaidAt,
+  });
+});
+
 module.exports = router;
 
 

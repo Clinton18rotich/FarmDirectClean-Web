@@ -64,8 +64,19 @@ function registerParcel(data) {
     polygonClosed: false,
     hasGpsBoundary: data.waypoints && data.waypoints.length >= 3,
 
+    // Registration fee (Module G + KYC + M-Pesa)
+    tier: 'basic',                   // basic (KES 500) | premium (KES 2000)
+    fee: 500,                        // KES — charged once at registration
+    feePaid: false,
+    feePaidAt: null,
+    paymentRef: null,
+    checkoutRequestId: null,         // for M-Pesa callback matching
+    premiumFee: null,                // KES 2000 once upgraded
+    premiumPaidAt: null,
+    premiumPaymentRef: null,
+
     // Verification
-    status: 'draft',  // draft | pending_witnesses | verified | disputed
+    status: 'pending_payment',  // pending_payment | draft | pending_witnesses | verified | disputed
     witnesses: [],
     requiredWitnesses: 3,
     confirmedWitnesses: 0,
@@ -848,3 +859,147 @@ module.exports.markNomadic = markNomadic;
 module.exports._sosAlerts = sosAlerts;
 module.exports._emergencyContacts = emergencyContacts;
 module.exports._leases = leases;
+
+
+// ═════════════════════════════════════════════════════
+// PARCEL PAYMENT (Module G + M-Pesa)
+// ═════════════════════════════════════════════════════
+
+/**
+ * Initiate KES 500 registration fee STK push for a parcel
+ */
+async function initiateParcelPayment(parcelId, phone) {
+  const parcel = parcels.get(parcelId);
+  if (!parcel) return { error: 'Parcel not found' };
+  if (parcel.feePaid) return { error: 'Already paid' };
+
+  const mpesa = require('./mpesa');
+
+  // Simulated mode — mark paid immediately, promote to draft
+  if (!mpesa.isConfigured()) {
+    console.log('⚠️  M-Pesa not configured — simulating parcel payment');
+    parcel.feePaid = true;
+    parcel.feePaidAt = new Date().toISOString();
+    parcel.paymentRef = 'SIMULATED-' + Date.now();
+    parcel.status = 'draft';
+    parcel.history.push({ action: 'fee_paid', at: parcel.feePaidAt, note: 'KES ' + parcel.fee + ' (simulated)' });
+    persist();
+    return { record: parcel, stk: null };
+  }
+
+  // Real STK push
+  try {
+    const result = await mpesa.stkPush({
+      phone,
+      amount: parcel.fee,
+      accountRef: 'LAND-' + parcel.id,
+      description: 'FarmDirect land registration',
+    });
+
+    parcel.checkoutRequestId = result.CheckoutRequestID;
+    parcel.stkInitiatedAt = new Date().toISOString();
+    parcel.status = 'awaiting_payment';
+    persist();
+
+    return {
+      record: parcel,
+      stk: {
+        checkoutRequestId: result.CheckoutRequestID,
+        customerMessage: result.CustomerMessage,
+      },
+    };
+  } catch (err) {
+    console.error('❌ Parcel STK failed:', err.message);
+    return { error: 'Failed to send M-Pesa prompt: ' + err.message };
+  }
+}
+
+/**
+ * Initiate KES 2000 premium upgrade STK push
+ */
+async function initiatePremiumUpgrade(parcelId, phone) {
+  const parcel = parcels.get(parcelId);
+  if (!parcel) return { error: 'Parcel not found' };
+  if (!parcel.feePaid) return { error: 'Pay basic registration fee first' };
+  if (parcel.tier === 'premium') return { error: 'Already premium' };
+
+  const mpesa = require('./mpesa');
+  const PREMIUM_FEE = 2000;
+
+  if (!mpesa.isConfigured()) {
+    console.log('⚠️  M-Pesa not configured — simulating premium upgrade');
+    parcel.tier = 'premium';
+    parcel.premiumFee = PREMIUM_FEE;
+    parcel.premiumPaidAt = new Date().toISOString();
+    parcel.premiumPaymentRef = 'SIMULATED-' + Date.now();
+    parcel.history.push({ action: 'premium_upgrade', at: parcel.premiumPaidAt, note: 'KES ' + PREMIUM_FEE + ' (simulated)' });
+    persist();
+    return { record: parcel, stk: null };
+  }
+
+  try {
+    const result = await mpesa.stkPush({
+      phone,
+      amount: PREMIUM_FEE,
+      accountRef: 'LAND-PREM-' + parcel.id,
+      description: 'FarmDirect premium land verification',
+    });
+
+    parcel.premiumCheckoutRequestId = result.CheckoutRequestID;
+    parcel.premiumStkInitiatedAt = new Date().toISOString();
+    persist();
+
+    return {
+      record: parcel,
+      stk: {
+        checkoutRequestId: result.CheckoutRequestID,
+        customerMessage: result.CustomerMessage,
+      },
+    };
+  } catch (err) {
+    console.error('❌ Premium STK failed:', err.message);
+    return { error: 'Failed to send M-Pesa prompt: ' + err.message };
+  }
+}
+
+/**
+ * Confirm parcel payment from M-Pesa callback
+ * Matches by CheckoutRequestID (never phone)
+ */
+async function confirmParcelPayment(checkoutRequestId, callbackData) {
+  const parcel = [...parcels.values()].find(
+    p => p.checkoutRequestId === checkoutRequestId || p.premiumCheckoutRequestId === checkoutRequestId
+  );
+  if (!parcel) return { error: 'No matching parcel' };
+
+  const isPremium = parcel.premiumCheckoutRequestId === checkoutRequestId;
+
+  if (!callbackData.success) {
+    parcel.status = isPremium ? parcel.status : 'payment_failed';
+    parcel.paymentFailureReason = callbackData.resultDesc;
+    persist();
+    return { record: parcel };
+  }
+
+  if (isPremium) {
+    parcel.tier = 'premium';
+    parcel.premiumFee = callbackData.amount;
+    parcel.premiumPaidAt = new Date().toISOString();
+    parcel.premiumPaymentRef = callbackData.mpesaReceipt;
+    parcel.history.push({ action: 'premium_upgrade', at: parcel.premiumPaidAt, note: 'KES ' + callbackData.amount + ' | ' + callbackData.mpesaReceipt });
+  } else {
+    parcel.feePaid = true;
+    parcel.feePaidAt = new Date().toISOString();
+    parcel.paymentRef = callbackData.mpesaReceipt;
+    parcel.fee = callbackData.amount;
+    parcel.status = 'draft';
+    parcel.history.push({ action: 'fee_paid', at: parcel.feePaidAt, note: 'KES ' + callbackData.amount + ' | ' + callbackData.mpesaReceipt });
+  }
+
+  persist();
+  return { record: parcel };
+}
+
+module.exports.initiateParcelPayment = initiateParcelPayment;
+module.exports.initiatePremiumUpgrade = initiatePremiumUpgrade;
+module.exports.confirmParcelPayment = confirmParcelPayment;
