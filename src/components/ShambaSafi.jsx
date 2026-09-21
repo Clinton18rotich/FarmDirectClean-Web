@@ -118,8 +118,8 @@ export default function ShambaSafi({ onClose }) {
 
             {activeModule === 'land' && <LandModule myFarmer={myFarmer} myLand={myLand} reload={loadAll} />}
             {activeModule === 'livestock' && <LivestockModule myFarmer={myFarmer} myLivestock={myLivestock} reload={loadAll} />}
-            {activeModule === 'health' && <ComingSoon name="Health & Vet Network" />}
-            {activeModule === 'meat' && <ComingSoon name="Meat Traceability" />}
+            {activeModule === 'health' && <VetModule />}
+            {activeModule === 'meat' && <VerifyMeatView onBack={() => setActiveModule(null)} />}
             {activeModule === 'slaughterhouse' && <SlaughterhouseModule />}
             {activeModule === 'butchery' && <ButcheryModule />}
           </div>
@@ -1042,6 +1042,342 @@ function VerifyMeatView({ onBack }) {
       {onBack && <button onClick={onBack} style={{...primaryBtn, background:'none', color:'#666', marginTop:8}}>Back</button>}
     </div>
   );
+}
+
+
+
+
+// MODULE C: VETERINARY NETWORK
+function VetModule() {
+  const [view, setView] = useState('home');
+  const [myFarmer, setMyFarmer] = useState(null);
+  const [myVet, setMyVet] = useState(null);
+  const [stats, setStats] = useState(null);
+  const [sickReports, setSickReports] = useState([]);
+  const [vets, setVets] = useState([]);
+  const [constants, setConstants] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const [regForm, setRegForm] = useState({
+    fullName: '', phone: '', email: '', kvaLicenseNumber: '',
+    vetType: 'private', specializations: ['general'],
+    location: null, coverageRadius: 20,
+    acceptsEmergency: true, availableHours: '08:00 - 18:00',
+    consultationFee: 500,
+    paymentMethod: 'pochi', pochiPhone: '',
+  });
+
+  const [sickTarget, setSickTarget] = useState(null);
+  const [sickForm, setSickForm] = useState({ symptoms: [], symptomDetails: '', urgency: 'medium' });
+  const [myAnimals, setMyAnimals] = useState([]);
+
+  useEffect(() => { loadAll(); }, []);
+
+  const loadAll = async () => {
+    try {
+      const savedFarmer = localStorage.getItem('farmerRegistration');
+      if (savedFarmer) setMyFarmer(JSON.parse(savedFarmer));
+
+      const savedVetId = localStorage.getItem('vetId');
+      const [s, reports, vetsList, c] = await Promise.all([
+        api.vet.stats().catch(() => ({ stats: null })),
+        api.vet.listSickReports().catch(() => ({ reports: [] })),
+        api.vet.list().catch(() => ({ vets: [] })),
+        api.vet.constants().catch(() => null),
+      ]);
+      setStats(s.stats);
+      setSickReports(reports.reports || []);
+      setVets(vetsList.vets || []);
+      if (c) setConstants(c);
+
+      if (savedVetId) {
+        const my = (vetsList.vets || []).find(v => v.id === savedVetId);
+        if (my) setMyVet(my);
+      }
+
+      // Load my livestock (not products)
+      if (savedFarmer) {
+        const farmer = JSON.parse(savedFarmer);
+        const phone = farmer.farmer?.phone;
+        if (phone) {
+          const live = await api.shamba.listLivestock().catch(() => ({ livestock: [] }));
+          const mine = (live.livestock || []).filter(a => a.ownerPhone === phone && a.status === 'alive');
+          setMyAnimals(mine);
+        }
+      }
+    } catch (err) { console.error(err); }
+    finally { setLoading(false); }
+  };
+
+  const submitVetRegistration = async () => {
+    try {
+      const result = await api.vet.register({
+        ...regForm,
+        payment: regForm.vetType !== 'government' ? {
+          method: regForm.paymentMethod,
+          pochiPhone: regForm.pochiPhone,
+        } : null,
+      });
+      if (!result.success) throw new Error(result.message);
+      localStorage.setItem('vetId', result.vet.id);
+      setMyVet(result.vet);
+      alert('Registered! ID: ' + result.vet.id);
+      await loadAll();
+      setView('home');
+    } catch (err) { alert('Error: ' + err.message); }
+  };
+
+  const toggleSymptom = (symptomId) => {
+    const has = sickForm.symptoms.includes(symptomId);
+    setSickForm({
+      ...sickForm,
+      symptoms: has ? sickForm.symptoms.filter(s => s !== symptomId) : [...sickForm.symptoms, symptomId],
+    });
+  };
+
+  const submitSickReport = async () => {
+    if (!sickTarget || sickForm.symptoms.length === 0) return;
+    try {
+      const result = await api.vet.reportSick({
+        passportId: sickTarget.passportId,
+        farmerName: myFarmer?.farmer?.fullName || sickTarget.ownerName,
+        farmerPhone: myFarmer?.farmer?.phone || sickTarget.ownerPhone,
+        location: sickTarget.location,
+        symptoms: sickForm.symptoms,
+        symptomDetails: sickForm.symptomDetails,
+        urgency: sickForm.urgency,
+      });
+      if (!result.success) throw new Error(result.message);
+      alert('Report submitted! ' + result.message);
+      setSickTarget(null);
+      setSickForm({ symptoms: [], symptomDetails: '', urgency: 'medium' });
+      await loadAll();
+      setView('my-reports');
+    } catch (err) { alert('Error: ' + err.message); }
+  };
+
+  if (loading) return <div style={{padding:40,textAlign:'center'}}>Loading vet network...</div>;
+
+  if (view === 'home') {
+    const myReports = myFarmer ? sickReports.filter(r => r.farmerPhone === myFarmer.farmer?.phone) : [];
+    return (
+      <div>
+        <h4 style={{fontSize:16,marginBottom:12}}>Veterinary Network</h4>
+        {stats && (
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:12}}>
+            <div style={{background:'#E3F2FD',padding:10,borderRadius:10,textAlign:'center'}}>
+              <strong style={{fontSize:18,color:'#1565C0'}}>{stats.vets.active}</strong>
+              <p style={{fontSize:9,color:'#666',margin:0}}>Active Vets</p>
+            </div>
+            <div style={{background:'#FFF3E0',padding:10,borderRadius:10,textAlign:'center'}}>
+              <strong style={{fontSize:18,color:'#E65100'}}>{stats.reports.total}</strong>
+              <p style={{fontSize:9,color:'#666',margin:0}}>Sick Reports</p>
+            </div>
+            <div style={{background:'#E8F5E9',padding:10,borderRadius:10,textAlign:'center'}}>
+              <strong style={{fontSize:18,color:'#2E7D32'}}>{stats.treatments.total}</strong>
+              <p style={{fontSize:9,color:'#666',margin:0}}>Treatments</p>
+            </div>
+          </div>
+        )}
+
+        {myVet ? (
+          <div style={{background:'#E3F2FD',padding:14,borderRadius:12,marginBottom:12,border:'1px solid #90CAF9'}}>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+              <strong style={{fontSize:14}}>Dr. {myVet.fullName}</strong>
+              <span style={{background: myVet.status === 'active' ? '#2E7D32' : '#FF9800', color:'white', padding:'2px 8px', borderRadius:6, fontSize:10}}>
+                {myVet.status === 'active' ? 'ACTIVE' : 'PENDING'}
+              </span>
+            </div>
+            <p style={{fontSize:11,color:'#666',margin:'2px 0'}}>{myVet.isGovt ? 'Govt Vet' : 'Private'} - {myVet.specializations?.join(', ')}</p>
+            <p style={{fontSize:11,color:'#666',margin:'2px 0'}}>{myVet.location?.county}</p>
+          </div>
+        ) : (
+          <button onClick={() => setView('register-vet')} style={{...primaryBtn, background:'#1565C0'}}>Register as Vet</button>
+        )}
+
+        {myFarmer && <button onClick={() => setView('report-sick')} style={{...primaryBtn, background:'#E65100'}}>Report Sick Animal</button>}
+        <button onClick={() => setView('my-reports')} style={{...primaryBtn, background:'white', color:'#1565C0', border:'2px solid #1565C0'}}>My Reports ({myReports.length})</button>
+        <button onClick={() => setView('find-vets')} style={{...primaryBtn, background:'white', color:'#1565C0', border:'2px solid #1565C0'}}>Find Vets ({vets.length})</button>
+      </div>
+    );
+  }
+
+  if (view === 'register-vet') {
+    return (
+      <div>
+        <h4 style={{fontSize:16,marginBottom:12}}>Register as Vet</h4>
+        <label style={labelStyle}>Vet Type *</label>
+        <select value={regForm.vetType} onChange={e => setRegForm({...regForm, vetType: e.target.value})} style={{...inputStyle, background:'white'}}>
+          <option value="private">Private Practice</option>
+          <option value="government">Government Vet</option>
+          <option value="clinic">Clinic-Based</option>
+          <option value="mobile">Mobile / Ambulatory</option>
+        </select>
+        <label style={labelStyle}>Full Name *</label>
+        <input value={regForm.fullName} onChange={e => setRegForm({...regForm, fullName: e.target.value})} placeholder="Dr. James Mwangi" style={inputStyle} />
+        <label style={labelStyle}>Phone *</label>
+        <input value={regForm.phone} onChange={e => setRegForm({...regForm, phone: e.target.value})} onBlur={e => e.target.value && setRegForm({...regForm, phone: normalizeKenyaPhone(e.target.value)})} placeholder="0712345678" type="tel" style={inputStyle} />
+        {regForm.vetType !== 'government' && (
+          <>
+            <label style={labelStyle}>KVB License Number *</label>
+            <input value={regForm.kvaLicenseNumber} onChange={e => setRegForm({...regForm, kvaLicenseNumber: e.target.value})} placeholder="KVB/2024/1234" style={inputStyle} />
+          </>
+        )}
+        <label style={labelStyle}>Specializations</label>
+        <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:8}}>
+          {constants?.specializations?.map(s => {
+            const selected = regForm.specializations.includes(s.id);
+            return (
+              <button key={s.id} onClick={() => setRegForm({
+                ...regForm,
+                specializations: selected
+                  ? regForm.specializations.filter(x => x !== s.id)
+                  : [...regForm.specializations, s.id],
+              })} style={{
+                padding:'8px 14px',borderRadius:20,border:'none',
+                background: selected ? '#1565C0' : '#F0F0F0',
+                color: selected ? 'white' : '#555',
+                fontSize:12,cursor:'pointer',fontWeight:'bold',
+              }}>{s.icon} {s.label}</button>
+            );
+          })}
+        </div>
+        <label style={labelStyle}>Coverage Radius: {regForm.coverageRadius} km</label>
+        <input type="range" min="5" max="100" value={regForm.coverageRadius} onChange={e => setRegForm({...regForm, coverageRadius: parseInt(e.target.value)})} style={{width:'100%',marginBottom:8}} />
+        <label style={labelStyle}>Consultation Fee (KES)</label>
+        <input value={regForm.consultationFee} onChange={e => setRegForm({...regForm, consultationFee: parseInt(e.target.value) || 0})} type="number" style={inputStyle} />
+        <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',margin:'8px 0'}}>
+          <input type="checkbox" checked={regForm.acceptsEmergency} onChange={e => setRegForm({...regForm, acceptsEmergency: e.target.checked})} style={{width:20,height:20}} />
+          <strong style={{fontSize:13}}>I accept emergency cases</strong>
+        </label>
+        <LocationPicker value={regForm.location} onChange={loc => setRegForm({...regForm, location: loc})} required label="Where do you practice?" />
+        <div style={{display:'flex',gap:8,marginTop:16}}>
+          <button onClick={() => setView('home')} style={{...primaryBtn, background:'#F0F0F0', color:'#666', flex:1}}>Back</button>
+          <button onClick={submitVetRegistration} disabled={!regForm.fullName || !regForm.phone || !regForm.location || (regForm.vetType !== 'government' && !regForm.kvaLicenseNumber)} style={{...primaryBtn, background:'#1565C0', flex:2}}>Register</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (view === 'report-sick') {
+    return (
+      <div>
+        <h4 style={{fontSize:16,marginBottom:12}}>Report Sick Animal</h4>
+        {sickTarget ? (
+          <div>
+            <div style={{background:'#FFF3E0',padding:14,borderRadius:12,marginBottom:12}}>
+              <strong style={{fontSize:13}}>{sickTarget.type} - {sickTarget.breed}</strong>
+              <p style={{fontSize:11,margin:'4px 0 0',fontFamily:'monospace'}}>{sickTarget.passportId}</p>
+            </div>
+            <label style={labelStyle}>Symptoms (tap to select) *</label>
+            <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:12}}>
+              {constants?.symptoms?.map(s => {
+                const selected = sickForm.symptoms.includes(s.id);
+                return (
+                  <button key={s.id} onClick={() => toggleSymptom(s.id)} style={{
+                    padding:'8px 12px',borderRadius:20,border:'none',
+                    background: selected ? '#E65100' : '#F0F0F0',
+                    color: selected ? 'white' : '#555',
+                    fontSize:12,cursor:'pointer',fontWeight:'bold',
+                  }}>{s.icon} {s.label}</button>
+                );
+              })}
+            </div>
+            <label style={labelStyle}>Urgency</label>
+            <select value={sickForm.urgency} onChange={e => setSickForm({...sickForm, urgency: e.target.value})} style={{...inputStyle, background:'white'}}>
+              {constants?.urgencyLevels?.map(u => <option key={u.id} value={u.id}>{u.label}</option>)}
+            </select>
+            <label style={labelStyle}>Additional Details</label>
+            <textarea value={sickForm.symptomDetails} onChange={e => setSickForm({...sickForm, symptomDetails: e.target.value})} placeholder="Describe what you've noticed..." rows={3} style={{...inputStyle, resize:'vertical'}} />
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={() => setSickTarget(null)} style={{...primaryBtn, background:'#F0F0F0', color:'#666', flex:1}}>Cancel</button>
+              <button onClick={submitSickReport} disabled={sickForm.symptoms.length === 0} style={{...primaryBtn, background:'#E65100', flex:2}}>Submit Report</button>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <p style={{fontSize:12,color:'#666',marginBottom:12}}>Select the sick animal:</p>
+            {myAnimals.length === 0 && <p style={{textAlign:'center',color:'#999',padding:20}}>No animals registered</p>}
+            {myAnimals.map(a => (
+              <div key={a.passportId} onClick={() => setSickTarget(a)} style={{
+                background:'white',borderRadius:12,padding:14,marginBottom:8,
+                border:'1px solid #E0E0E0',cursor:'pointer',display:'flex',gap:10,alignItems:'center'
+              }}>
+                <span style={{fontSize:28}}>{
+                  a.type === 'Cow' ? '🐄' :
+                  a.type === 'Goat' ? '🐐' :
+                  a.type === 'Sheep' ? '🐑' :
+                  a.type === 'Pig' ? '🐷' :
+                  a.type === 'Chicken' ? '🐔' :
+                  a.type === 'Camel' ? '🐪' : '🐾'
+                }</span>
+                <div style={{flex:1}}>
+                  <strong style={{fontSize:13}}>{a.type} • {a.breed}</strong>
+                  <p style={{fontSize:11,color:'#666',margin:'4px 0 0',fontFamily:'monospace'}}>{a.passportId}</p>
+                  {a.currentLifeStage && <span style={{fontSize:10,background:'#E3F2FD',color:'#1565C0',padding:'1px 6px',borderRadius:4}}>{a.currentLifeStage}</span>}
+                </div>
+                <span style={{color:'#4CAF50',fontSize:20}}>→</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <button onClick={() => setView('home')} style={{...primaryBtn, background:'none', color:'#666', marginTop:8}}>Back</button>
+      </div>
+    );
+  }
+
+  if (view === 'my-reports') {
+    const myReports = myFarmer ? sickReports.filter(r => r.farmerPhone === myFarmer.farmer?.phone) : [];
+    return (
+      <div>
+        <h4 style={{fontSize:16,marginBottom:12}}>My Sick Reports ({myReports.length})</h4>
+        <button onClick={() => setView('home')} style={{...primaryBtn, background:'none', color:'#666', marginBottom:8}}>Back</button>
+        {myReports.length === 0 && <p style={{textAlign:'center',color:'#999',padding:20}}>No reports yet</p>}
+        {myReports.map(r => (
+          <div key={r.id} style={{
+            background: r.status === 'resolved' ? '#E8F5E9' : '#FFF3E0',
+            borderRadius:12,padding:14,marginBottom:8,
+            border:'1px solid #E0E0E0'
+          }}>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+              <strong style={{fontSize:12,fontFamily:'monospace'}}>{r.id}</strong>
+              <span style={{background: r.status === 'resolved' ? '#2E7D32' : '#E65100',color:'white',padding:'2px 8px',borderRadius:6,fontSize:10,fontWeight:'bold'}}>{r.status.toUpperCase()}</span>
+            </div>
+            <p style={{fontSize:12,margin:'2px 0'}}>{r.animalType} - {r.animalBreed}</p>
+            <p style={{fontSize:11,margin:'2px 0',color:'#666'}}>Symptoms: {r.symptoms.join(', ')}</p>
+            <p style={{fontSize:11,margin:'2px 0',color:'#666'}}>Urgency: {r.urgency}</p>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (view === 'find-vets') {
+    return (
+      <div>
+        <h4 style={{fontSize:16,marginBottom:12}}>Find Vets ({vets.length})</h4>
+        <button onClick={() => setView('home')} style={{...primaryBtn, background:'none', color:'#666', marginBottom:8}}>Back</button>
+        {vets.length === 0 && <p style={{textAlign:'center',color:'#999',padding:20}}>No vets registered</p>}
+        {vets.map(v => (
+          <div key={v.id} style={{
+            background: v.status === 'active' ? '#E3F2FD' : '#FFF3E0',
+            borderRadius:12,padding:14,marginBottom:8,
+            border:'1px solid #E0E0E0'
+          }}>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+              <strong style={{fontSize:13}}>{v.isGovt ? '[GOVT] ' : ''}{v.fullName}</strong>
+              <span style={{background: v.status === 'active' ? '#2E7D32' : '#FF9800',color:'white',padding:'2px 8px',borderRadius:6,fontSize:10}}>{v.status.toUpperCase()}</span>
+            </div>
+            <p style={{fontSize:11,margin:'2px 0',color:'#666'}}>{v.vetType} - {v.specializations?.join(', ')}</p>
+            <p style={{fontSize:11,margin:'2px 0',color:'#666'}}>{v.location?.county}, {v.location?.ward}</p>
+            <p style={{fontSize:11,margin:'2px 0',color:'#666'}}>{v.phone}</p>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return null;
 }
 
 

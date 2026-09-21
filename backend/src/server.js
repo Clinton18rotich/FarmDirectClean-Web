@@ -24,6 +24,7 @@ app.use('/api/rider', require('./routes/rider'));
 app.use('/api/delivery', require('./routes/delivery'));
 app.use('/api/webhook', require('./routes/webhook'));
 app.use('/api/shamba', require('./routes/shamba'));
+app.use('/api/vet', require('./routes/vet'));
 app.use('/api/slaughterhouse', require('./routes/slaughterhouse'));
 app.use('/api/meat-handler', require('./routes/meatHandler'));
 

@@ -156,3 +156,39 @@ api.shamba.listTheftAlerts = () => request('/api/shamba/theft-alerts/list');
 api.shamba.theftAlertStats = () => request('/api/shamba/theft-alerts/stats');
 api.shamba.getTheftAlert = (passportId) => request(`/api/shamba/theft-alerts/${passportId}`);
 api.shamba.resolveTheftAlert = (theftId, data) => request(`/api/shamba/theft-alerts/${theftId}/resolve`, { method: 'POST', body: data });
+
+// Veterinary Network
+api.vet = {
+  constants: () => request('/api/vet/constants'),
+  stats: () => request('/api/vet/stats'),
+
+  // Registration
+  register: (data) => request('/api/vet/register', { method: 'POST', body: data }),
+  list: (filter = {}) => {
+    const params = new URLSearchParams(filter).toString();
+    return request(`/api/vet/list${params ? '?' + params : ''}`);
+  },
+  get: (id) => request(`/api/vet/${id}`),
+  getByPhone: (phone) => request(`/api/vet/by-phone/${phone}`),
+  verify: (id, data) => request(`/api/vet/${id}/verify`, { method: 'POST', body: data }),
+  vetStats: (id) => request(`/api/vet/${id}/stats`),
+
+  // Sick reports
+  reportSick: (data) => request('/api/vet/sick/report', { method: 'POST', body: data }),
+  listSickReports: (filter = {}) => {
+    const params = new URLSearchParams(filter).toString();
+    return request(`/api/vet/sick/list${params ? '?' + params : ''}`);
+  },
+  getSickReport: (id) => request(`/api/vet/sick/${id}`),
+  acceptCase: (id, vetId) => request(`/api/vet/sick/${id}/accept`, { method: 'POST', body: { vetId } }),
+  rejectCase: (id, vetId, reason) => request(`/api/vet/sick/${id}/reject`, { method: 'POST', body: { vetId, reason } }),
+  startTreatment: (id, vetId) => request(`/api/vet/sick/${id}/start`, { method: 'POST', body: { vetId } }),
+  completeTreatment: (id, data) => request(`/api/vet/sick/${id}/complete`, { method: 'POST', body: data }),
+
+  // Quarantine
+  quarantine: (passportId, data) => request(`/api/vet/quarantine/${passportId}`, { method: 'POST', body: data }),
+  releaseQuarantine: (passportId, data) => request(`/api/vet/quarantine/${passportId}/release`, { method: 'POST', body: data }),
+
+  // Farmer health history
+  farmerHealth: (farmerId) => request(`/api/vet/farmer/${farmerId}/health`),
+};
