@@ -230,3 +230,34 @@ To go live: sign up at didit.me, set KYC_PROVIDER=didit, DIDIT_API_KEY=xxx
 - 1735b3d — Frontend Module G (Land Sovereignty)
 - 4c42612 — KYC + Payment Gating + Seller Tiers
 - 4e38966 — Project Context Document
+
+## Session Update — KYC Frontend Complete
+
+**Added:**
+- KYCModal.jsx (223 lines) — full verification flow
+- api.kyc methods (10 endpoints)
+- App.jsx integration (state, badge, banner, modal)
+- Verified ✅ badge in header for verified users
+- Blue "Get Verified" banner for unverified farmers
+- Green "Verified Seller" banner after verification
+
+**Current KYC mode:**
+- M-Pesa: SIMULATED (no real charge)
+- IPRS: MOCK provider (always approves)
+
+**To go LIVE:**
+1. Real M-Pesa:
+   - Backend: POST /api/kyc/:id/pay → STK push
+   - Callback: confirm payment → run verification
+   - Frontend: replace simulate with real API call
+   - Needs: Safaricom Daraja sandbox credentials
+2. Real IPRS:
+   - Sign up at didit.me (500 free/month)
+   - Set KYC_PROVIDER=didit + DIDIT_API_KEY in .env
+   - Restart backend
+
+**Latest commits:**
+- 5993078 — Frontend: KYC Verification + Seller Tiers UI
+- 4c42612 — Backend: KYC + Payment Gating + Seller Tiers
+- 1735b3d — Frontend: Module G Land Sovereignty
+- 7e51515 — Update context with KYC session
