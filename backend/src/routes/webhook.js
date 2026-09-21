@@ -15,8 +15,41 @@ router.post('/sms', async (req, res) => {
     console.log('📨 Inbound SMS from', from, ':', text);
 
     const parts = (text || '').trim().toUpperCase().split(/\s+/);
-    const response = parts[0];  // YES or NO
-    const orderId = parts[1];   // DEL-XXX
+    const response = parts[0];  // YES | NO | WEIGH | HELP
+
+    // ═══ WEIGH COMMAND HANDLER ═══
+    if (response === 'WEIGH') {
+      const measurementGuide = require('../services/measurementGuide');
+      const result = measurementGuide.processSMSWeigh(text);
+      
+      if (result.success) {
+        const reply = `FarmDirect — Weight Estimate\n` +
+          `Animal: ${result.animalType}\n` +
+          `Girth: ${result.girth}cm\n` +
+          `Length: ${result.length}cm\n\n` +
+          `Estimated weight: ${result.weight} kg\n\n` +
+          `Formula: ${result.formula}`;
+        await sms.sendSms(from, reply);
+        console.log('📏 SMS weigh:', from, '->', result.weight, 'kg');
+        return res.json({ success: true, type: 'weigh', result });
+      } else {
+        const errorMsg = `FarmDirect — Weigh Command\n\n` +
+          `Format: WEIGH [girth] [length] [animal]\n` +
+          `Example: WEIGH 180 140 Cow\n\n` +
+          `Girth and length must be in cm.\n` +
+          `Reply HELP for measurement guide.`;
+        await sms.sendSms(from, errorMsg);
+        return res.json({ success: false, message: result.error });
+      }
+    }
+
+    // ═══ HELP COMMAND HANDLER ═══
+    if (response === 'HELP' || response === 'GUIDE') {
+      const measurementGuide = require('../services/measurementGuide');
+      const smsGuide = measurementGuide.getSMSGuide('en');
+      await sms.sendSms(from, smsGuide);
+      return res.json({ success: true, type: 'help' });
+    }
 
     if (!['YES', 'NO', 'ACCEPT', 'DECLINE'].includes(response)) {
       // Unknown command

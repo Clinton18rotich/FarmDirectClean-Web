@@ -84,8 +84,20 @@ router.post('/land/:id/witness', (req, res) => {
 router.post('/livestock/register', (req, res) => {
   try {
     const {
+      // Owner & basic
       ownerId, ownerName, ownerPhone, type, breed, age, color, gender, location, photoUrl,
       isNewborn, birthDate, motherPassport, fatherPassport, birthWeight,
+      // Physical profile
+      weight, heartGirth, bodyLength, heightAtWithers,
+      bodyConditionScore, muscleCondition, fatCover,
+      coatCondition, skinCondition, skinProblems, coatColorPattern,
+      udderSize, udderShape, teatCondition, milkVeins,
+      lactationStatus, dailyMilkYield, pregnancyStatus, pregnancyMonths,
+      calvingHistory, lastCalvingDate,
+      horns, eyes, teethAge, ears, muzzle,
+      hooves, legs, walking, jointSwelling,
+      purpose, breedPurity, sireInfo, damInfo, feedRegime,
+      vaccinationCard, vetCertificate, movementPermit, brandMark, earTag,
     } = req.body;
 
     if (!ownerName || !ownerPhone) {
@@ -96,21 +108,21 @@ router.post('/livestock/register', (req, res) => {
     if (!location) return res.status(400).json({ success: false, message: 'Location required' });
 
     const animal = shamba.registerLivestock({
-      ownerId,
-      ownerName,
-      ownerPhone: normalizeKenyaPhone(ownerPhone),
-      type,
-      breed,
-      age,
-      color,
-      gender,
-      location,
-      photoUrl,
-      isNewborn,
-      birthDate,
-      motherPassport,
-      fatherPassport,
-      birthWeight,
+      // Owner & basic
+      ownerId, ownerName, ownerPhone: normalizeKenyaPhone(ownerPhone),
+      type, breed, age, color, gender, location, photoUrl,
+      isNewborn, birthDate, motherPassport, fatherPassport, birthWeight,
+      // Physical profile
+      weight, heartGirth, bodyLength, heightAtWithers,
+      bodyConditionScore, muscleCondition, fatCover,
+      coatCondition, skinCondition, skinProblems, coatColorPattern,
+      udderSize, udderShape, teatCondition, milkVeins,
+      lactationStatus, dailyMilkYield, pregnancyStatus, pregnancyMonths,
+      calvingHistory, lastCalvingDate,
+      horns, eyes, teethAge, ears, muzzle,
+      hooves, legs, walking, jointSwelling,
+      purpose, breedPurity, sireInfo, damInfo, feedRegime,
+      vaccinationCard, vetCertificate, movementPermit, brandMark, earTag,
     });
 
     if (animal.error) {
@@ -421,4 +433,97 @@ router.post('/theft-alerts/:theftId/resolve', (req, res) => {
   const result = theftAlert.resolveAlert(req.params.theftId, { note, recoveredBy });
   if (!result) return res.status(404).json({ success: false, message: 'Alert not found' });
   res.json({ success: true, alert: result });
+});
+
+
+// ═══════════════════════════════════════════════════
+// PHYSICAL ATTRIBUTES
+// ═══════════════════════════════════════════════════
+
+const physicalAttributes = require('../services/physicalAttributes');
+
+router.get('/physical-attributes', (req, res) => {
+  res.json({
+    success: true,
+    attributes: physicalAttributes.getAllAttributes(),
+    bodyConditionScores: physicalAttributes.getBodyConditionScores(),
+    breedAverages: physicalAttributes.getBreedAverages(),
+  });
+});
+
+router.get('/physical-attributes/bcs', (req, res) => {
+  res.json({
+    success: true,
+    scores: physicalAttributes.getBodyConditionScores(),
+  });
+});
+
+router.get('/physical-attributes/breed-averages', (req, res) => {
+  res.json({
+    success: true,
+    averages: physicalAttributes.getBreedAverages(),
+  });
+});
+
+router.get('/livestock/:passportId/compare-breed', (req, res) => {
+  const animal = shamba.getEnrichedLivestock(req.params.passportId);
+  if (!animal) return res.status(404).json({ success: false, message: 'Animal not found' });
+  const comparison = physicalAttributes.compareToBreedAverage(animal);
+  if (!comparison) return res.status(400).json({ success: false, message: 'No breed average data for this animal' });
+  res.json({ success: true, comparison });
+});
+
+/**
+ * Estimate weight from measurements (public endpoint)
+ */
+router.post('/livestock/estimate-weight', (req, res) => {
+  const { type, heartGirth, bodyLength } = req.body;
+  if (!type || !heartGirth || !bodyLength) {
+    return res.status(400).json({ success: false, message: 'Type, heartGirth, and bodyLength required' });
+  }
+  const weight = shamba.estimateWeight(type, heartGirth, bodyLength);
+  if (!weight) return res.status(400).json({ success: false, message: 'Invalid measurements' });
+  res.json({ success: true, weight, method: 'weight-tape-formula' });
+});
+
+
+// ═══════════════════════════════════════════════════
+// MEASUREMENT GUIDE
+// ═══════════════════════════════════════════════════
+
+const measurementGuide = require('../services/measurementGuide');
+
+router.get('/measurement-guide', (req, res) => {
+  const lang = req.query.lang || 'en';
+  res.json({
+    success: true,
+    language: lang,
+    guide: measurementGuide.getGuide(lang),
+  });
+});
+
+router.get('/measurement-guide/all', (req, res) => {
+  res.json({
+    success: true,
+    guides: measurementGuide.getAllGuides(),
+  });
+});
+
+router.get('/measurement-guide/sms', (req, res) => {
+  const lang = req.query.lang || 'en';
+  res.json({
+    success: true,
+    smsGuide: measurementGuide.getSMSGuide(lang),
+  });
+});
+
+/**
+ * Test SMS weigh command
+ * In production, this would be called from the SMS webhook
+ */
+router.post('/measurement-guide/test-sms', (req, res) => {
+  const { text } = req.body;
+  if (!text) return res.status(400).json({ success: false, message: 'Text required' });
+  const result = measurementGuide.processSMSWeigh(text);
+  res.json(result);
 });

@@ -226,6 +226,19 @@ function enrichAnimal(animal) {
   const stage = computeLifeStage(animal);
   const isYoung = age.months < 12;
 
+  // Derived physical data
+  const bcs = interpretBCS(animal.bodyConditionScore);
+  const productionScore = computeProductionScore(animal);
+  const marketValue = computeMarketValue({ ...animal, productionScore });
+
+  // Auto-compute weight if measurements available but no explicit weight
+  let estimatedWeight = animal.weight;
+  let weightSource = animal.weight ? 'measured' : null;
+  if (!estimatedWeight && animal.heartGirth && animal.bodyLength) {
+    estimatedWeight = estimateWeight(animal.type, animal.heartGirth, animal.bodyLength);
+    weightSource = 'estimated';
+  }
+
   return {
     ...animal,
     currentLifeStage: stage,
@@ -233,6 +246,145 @@ function enrichAnimal(animal) {
     ageDisplay: age.display,
     isYoung,
     displayName: isYoung ? stage : `${stage} (${age.display})`,
+
+    // Derived
+    weight: estimatedWeight,
+    weightSource,
+    bcsInterpretation: bcs,
+    productionScore,
+    marketValue,
+  };
+}
+
+
+/**
+ * Compute Body Condition Score interpretation
+ */
+function interpretBCS(score) {
+  if (!score) return null;
+  const s = parseInt(score);
+  if (s <= 1) return { label: 'Emaciated', color: '#C62828', note: 'Severely underweight — needs urgent feeding' };
+  if (s === 2) return { label: 'Thin', color: '#FF9800', note: 'Underweight — needs better nutrition' };
+  if (s === 3) return { label: 'Ideal', color: '#4CAF50', note: 'Perfect condition for market' };
+  if (s === 4) return { label: 'Fat', color: '#FF9800', note: 'Slightly heavy — reduce feed' };
+  if (s >= 5) return { label: 'Obese', color: '#C62828', note: 'Overweight — health risk' };
+  return null;
+}
+
+/**
+ * Compute weight from heart girth + body length (weight tape formula)
+ * Cattle: (Girth² × Length) / 300
+ * Goats/Sheep: (Girth² × Length) / 350
+ */
+function estimateWeight(animalType, heartGirth, bodyLength) {
+  if (!heartGirth || !bodyLength) return null;
+  const g = parseFloat(heartGirth);
+  const l = parseFloat(bodyLength);
+  if (g < 30 || l < 30) return null;
+
+  // Kenya weight tape formula (cm measurements → kg output)
+  // Cattle: (Girth² x Length) / 30000
+  // Goat/Sheep/Pig: (Girth² x Length) / 40000
+  let divisor;
+  if (['Cow', 'Bull', 'Heifer', 'Camel', 'Donkey'].includes(animalType)) {
+    divisor = 30000;
+  } else if (['Goat', 'Sheep', 'Pig'].includes(animalType)) {
+    divisor = 40000;
+  } else {
+    divisor = 35000;
+  }
+
+  return Math.round((g * g * l) / divisor);
+}
+
+/**
+ * Compute production value score (0-100)
+ * Higher score = higher market value
+ */
+function computeProductionScore(animal) {
+  let score = 50; // baseline
+
+  // Weight bonus
+  if (animal.weight) {
+    const avg = { 'Cow': 400, 'Goat': 40, 'Sheep': 45, 'Pig': 100, 'Camel': 500 }[animal.type] || 50;
+    const ratio = animal.weight / avg;
+    score += Math.min(20, Math.max(-20, (ratio - 1) * 40));
+  }
+
+  // BCS bonus
+  if (animal.bodyConditionScore) {
+    const bcs = parseInt(animal.bodyConditionScore);
+    if (bcs === 3) score += 15;
+    else if (bcs === 2 || bcs === 4) score += 5;
+    else score -= 10;
+  }
+
+  // Vaccination bonus
+  if ((animal.vaccinations || []).length > 0) score += 5;
+  if ((animal.vaccinations || []).length >= 2) score += 5;
+
+  // Vet verified bonus
+  if (animal.deathRecord?.vetVerified) score += 5;
+
+  // Health penalties
+  if (animal.health === 'deceased') score = 0;
+  if (animal.quarantine?.active) score -= 30;
+  if (animal.isReportedStolen) score = 0;
+
+  // Age penalty (older animals worth less for meat)
+  if (animal.teethAge === 'worn') score -= 10;
+  if (animal.teethAge === 'full') score -= 5;
+
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+/**
+ * Compute market value estimate (KES)
+ * Simple model: base by type × production score × regional multiplier
+ */
+function computeMarketValue(animal, regionalAvg) {
+  if (!animal) return null;
+
+  // Base price by type (approximate Kenya averages)
+  const basePrices = {
+    'Cow': 65000, 'Bull': 75000, 'Heifer': 55000,
+    'Goat': 10000, 'Sheep': 12000, 'Pig': 20000,
+    'Chicken': 1200, 'Camel': 120000, 'Donkey': 30000,
+    'Rabbit': 2500,
+  };
+
+  const base = basePrices[animal.type] || 20000;
+  const score = animal.productionScore || 50;
+
+  // Score multiplier (0.6 to 1.4)
+  const scoreMultiplier = 0.6 + (score / 100) * 0.8;
+
+  // Breed multiplier (Friesian, Boran, etc. premium)
+  const breedMultipliers = {
+    'Friesian': 1.3, 'Jersey': 1.2, 'Ayrshire': 1.15,
+    'Boran': 1.1, 'Sahiwal': 1.15, 'Sahiwal': 1.15,
+    'Dorper': 1.2, 'Merino': 1.25,
+    'Galla': 0.95, 'Red Maasai': 1.0,
+    'Kienyeji': 0.85,
+  };
+  const breedMult = breedMultipliers[animal.breed] || 1.0;
+
+  // Regional multiplier (Nairobi higher, remote lower)
+  const regionMult = regionalAvg?.multiplier || 1.0;
+
+  const estimated = Math.round(base * scoreMultiplier * breedMult * regionMult);
+
+  return {
+    estimated,
+    range: {
+      low: Math.round(estimated * 0.85),
+      high: Math.round(estimated * 1.15),
+    },
+    basePrice: base,
+    scoreMultiplier: parseFloat(scoreMultiplier.toFixed(2)),
+    breedMultiplier: breedMult,
+    regionMultiplier: regionMult,
+    confidence: score > 60 ? 'high' : score > 40 ? 'medium' : 'low',
   };
 }
 
@@ -269,6 +421,62 @@ function registerLivestock(data) {
     age: data.age || null,
     color: data.color || null,
     gender: data.gender || null,
+
+    // ═══ PHYSICAL PROFILE (NEW) ═══
+    weight: data.weight ? parseFloat(data.weight) : null,
+    heartGirth: data.heartGirth ? parseFloat(data.heartGirth) : null,
+    bodyLength: data.bodyLength ? parseFloat(data.bodyLength) : null,
+    heightAtWithers: data.heightAtWithers ? parseFloat(data.heightAtWithers) : null,
+    bodyConditionScore: data.bodyConditionScore ? parseInt(data.bodyConditionScore) : null,
+    muscleCondition: data.muscleCondition || null,
+    fatCover: data.fatCover || null,
+
+    // Skin & coat
+    coatCondition: data.coatCondition || null,
+    skinCondition: data.skinCondition || null,
+    skinProblems: data.skinProblems || [],
+    coatColorPattern: data.coatColorPattern || null,
+
+    // Udder & reproduction (dairy)
+    udderSize: data.udderSize || null,
+    udderShape: data.udderShape || null,
+    teatCondition: data.teatCondition || null,
+    milkVeins: data.milkVeins || null,
+    lactationStatus: data.lactationStatus || null,
+    dailyMilkYield: data.dailyMilkYield ? parseFloat(data.dailyMilkYield) : null,
+    pregnancyStatus: data.pregnancyStatus || null,
+    pregnancyMonths: data.pregnancyMonths ? parseInt(data.pregnancyMonths) : null,
+    calvingHistory: data.calvingHistory ? parseInt(data.calvingHistory) : null,
+    lastCalvingDate: data.lastCalvingDate || null,
+
+    // Head & features
+    horns: data.horns || null,
+    eyes: data.eyes || null,
+    teethAge: data.teethAge || null,
+    ears: data.ears || null,
+    muzzle: data.muzzle || null,
+
+    // Legs & movement
+    hooves: data.hooves || null,
+    legs: data.legs || null,
+    walking: data.walking || null,
+    jointSwelling: data.jointSwelling || null,
+
+    // Production data
+    purpose: data.purpose || null,
+    breedPurity: data.breedPurity || null,
+    sireInfo: data.sireInfo || null,
+    damInfo: data.damInfo || null,
+    feedRegime: data.feedRegime || null,
+
+    // Documents
+    vaccinationCard: data.vaccinationCard || null,
+    vetCertificate: data.vetCertificate || null,
+    movementPermit: data.movementPermit || null,
+    brandMark: data.brandMark || null,
+    earTag: data.earTag || null,
+    // ═══ END PHYSICAL PROFILE ═══
+
     // ═══ NEW: Newborn fields ═══
     isNewborn,
     birthDate: birthDate,
@@ -318,7 +526,14 @@ function registerLivestock(data) {
 
   persist();
 
+  // Auto-compute weight if not provided but measurements are
+  if (!animal.weight && animal.heartGirth && animal.bodyLength) {
+    animal.weight = estimateWeight(animal.type, animal.heartGirth, animal.bodyLength);
+  }
+
   console.log('🐄 Livestock registered:', passportId, '|', data.type, data.breed, isNewborn ? '(NEWBORN)' : '');
+  if (animal.weight) console.log('   Weight:', animal.weight + 'kg');
+  if (animal.bodyConditionScore) console.log('   BCS:', animal.bodyConditionScore);
   if (mother) console.log('   Mother:', data.motherPassport);
 
   return animal;
@@ -1553,3 +1768,10 @@ module.exports.listHomeSlaughters = listHomeSlaughters;
 module.exports.getHomeSlaughterStats = getHomeSlaughterStats;
 
 module.exports.triggerTheftBroadcast = triggerTheftBroadcast;
+
+
+module.exports.interpretBCS = interpretBCS;
+module.exports.estimateWeight = estimateWeight;
+module.exports.computeProductionScore = computeProductionScore;
+module.exports.computeMarketValue = computeMarketValue;
+module.exports.getPhysicalAttributes = () => require('./physicalAttributes');
