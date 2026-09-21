@@ -199,3 +199,61 @@ api.shamba.measurementGuide = (lang = 'en') => request(`/api/shamba/measurement-
 api.shamba.measurementGuideSMS = (lang = 'en') => request(`/api/shamba/measurement-guide/sms?lang=${lang}`);
 api.shamba.estimateWeight = (data) => request('/api/shamba/livestock/estimate-weight', { method: 'POST', body: data });
 api.shamba.compareBreed = (passportId) => request(`/api/shamba/livestock/${passportId}/compare-breed`);
+
+
+// Land Protection (Module G)
+api.landProtection = {
+  // Stats & health
+  health: () => request('/api/land-protection/health'),
+  stats: () => request('/api/land-protection/stats'),
+
+  // Parcels
+  registerParcel: (data) => request('/api/land-protection/parcels/register', { method: 'POST', body: data }),
+  addWaypoint: (id, data) => request(`/api/land-protection/parcels/${id}/waypoint`, { method: 'POST', body: data }),
+  listParcels: (filter = {}) => {
+    const params = new URLSearchParams(filter).toString();
+    return request(`/api/land-protection/parcels/list${params ? '?' + params : ''}`);
+  },
+  getParcel: (id) => request(`/api/land-protection/parcels/${id}`),
+
+  // Title deed vault
+  uploadTitleDeed: (id, data) => request(`/api/land-protection/parcels/${id}/title-deed`, { method: 'POST', body: data }),
+  getTitleDeed: (id) => request(`/api/land-protection/parcels/${id}/title-deed`),
+
+  // Witness verification
+  inviteWitness: (parcelId, data) => request(`/api/land-protection/parcels/${parcelId}/witness`, { method: 'POST', body: data }),
+  confirmWitness: (witnessId, data) => request(`/api/land-protection/witnesses/${witnessId}/confirm`, { method: 'POST', body: data }),
+  declineWitness: (witnessId, data) => request(`/api/land-protection/witnesses/${witnessId}/decline`, { method: 'POST', body: data }),
+
+  // Eviction SOS
+  triggerSOS: (parcelId, data) => request(`/api/land-protection/parcels/${parcelId}/sos`, { method: 'POST', body: data }),
+  listSOS: (filter = {}) => {
+    const params = new URLSearchParams(filter).toString();
+    return request(`/api/land-protection/sos/list${params ? '?' + params : ''}`);
+  },
+  getSOS: (id) => request(`/api/land-protection/sos/${id}`),
+  resolveSOS: (id, data) => request(`/api/land-protection/sos/${id}/resolve`, { method: 'POST', body: data }),
+
+  // Emergency contacts
+  getEmergencyContacts: (ownerId) => request(`/api/land-protection/emergency-contacts/${ownerId}`),
+  saveEmergencyContacts: (ownerId, data) => request(`/api/land-protection/emergency-contacts/${ownerId}`, { method: 'POST', body: data }),
+
+  // Land-livestock match
+  verifyWithLivestock: (parcelId, livestockPassports) => 
+    request(`/api/land-protection/parcels/${parcelId}/verify-with-livestock`, { 
+      method: 'POST', 
+      body: { livestockPassports } 
+    }),
+
+  // Leases
+  createLease: (data) => request('/api/land-protection/leases/create', { method: 'POST', body: data }),
+  approveLease: (id, code) => request(`/api/land-protection/leases/${id}/approve`, { method: 'POST', body: { code } }),
+  rejectLease: (id, reason) => request(`/api/land-protection/leases/${id}/reject`, { method: 'POST', body: { reason } }),
+  listLeases: (filter = {}) => {
+    const params = new URLSearchParams(filter).toString();
+    return request(`/api/land-protection/leases/list${params ? '?' + params : ''}`);
+  },
+
+  // Nomadic
+  markNomadic: (passportId, data) => request(`/api/land-protection/livestock/${passportId}/nomadic`, { method: 'POST', body: data }),
+};

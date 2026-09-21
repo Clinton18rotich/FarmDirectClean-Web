@@ -58,6 +58,7 @@ export default function ShambaSafi({ onClose }) {
     { id: 'meat', icon: '🥩', title: 'Module D: Meat Traceability', desc: 'QR codes • Full chain • Consumer scan', color: '#E65100' },
     { id: 'slaughterhouse', icon: '🏭', title: 'Module E: Slaughterhouse Portal', desc: 'Register • Lookup • Slaughter • Meat tokens', color: '#7B1FA2' },
     { id: 'butchery', icon: '🏪', title: 'Module F: Butchery Portal', desc: 'Receive meat • Sell • Track inventory', color: '#C2185B' },
+    { id: 'land-sovereignty', icon: '🏠', title: 'Module G: Land Sovereignty', desc: 'GPS boundaries • Title vault • Witnesses • Eviction SOS', color: '#2E7D32' },
   ];
 
   return (
@@ -124,6 +125,7 @@ export default function ShambaSafi({ onClose }) {
             {activeModule === 'meat' && <VerifyMeatView onBack={() => setActiveModule(null)} />}
             {activeModule === 'slaughterhouse' && <SlaughterhouseModule />}
             {activeModule === 'butchery' && <ButcheryModule />}
+            {activeModule === 'land-sovereignty' && <LandSovereigntyModule />}
           </div>
         )}
 
@@ -1491,6 +1493,684 @@ function VetModule() {
             <p style={{fontSize:11,margin:'2px 0',color:'#666'}}>{v.phone}</p>
           </div>
         ))}
+      </div>
+    );
+  }
+
+  return null;
+}
+
+
+
+// MODULE G: LAND SOVEREIGNTY
+function LandSovereigntyModule() {
+  const [view, setView] = useState('home');
+  const [myFarmer, setMyFarmer] = useState(null);
+  const [parcels, setParcels] = useState([]);
+  const [selectedParcel, setSelectedParcel] = useState(null);
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  // Register form
+  const [regForm, setRegForm] = useState({
+    location: null,
+    county: '', subCounty: '', ward: '', village: '',
+    titleDeed: '', areaHectares: '', landUse: 'Mixed farming',
+    description: '', waypoints: [],
+    // Owner info (auto-filled if logged in as farmer)
+    ownerName: '',
+    ownerPhone: '',
+  });
+
+  // GPS recording
+  const [recording, setRecording] = useState(false);
+  const [currentGps, setCurrentGps] = useState(null);
+
+  // Title deed
+  const [deedNumber, setDeedNumber] = useState('');
+
+  // Witness invite
+  const [witnessForm, setWitnessForm] = useState({ name: '', phone: '', relationship: 'Neighbor' });
+
+  // SOS
+  const [sosActive, setSosActive] = useState(false);
+  const [sosSituation, setSosSituation] = useState('');
+
+  // Emergency contacts
+  const [emergencyForm, setEmergencyForm] = useState({ name: '', phone: '', relationship: '' });
+  const [emergencyContacts, setEmergencyContacts] = useState([]);
+
+  // Lease
+  const [leaseForm, setLeaseForm] = useState({
+    landownerName: '', landownerPhone: '', tenantName: '', tenantPhone: '',
+    purpose: 'Cattle grazing', monthlyFee: '', startDate: '', endDate: '', terms: '',
+  });
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('farmerRegistration');
+      if (saved) setMyFarmer(JSON.parse(saved));
+    } catch (e) {}
+    loadAll();
+  }, []);
+
+  const loadAll = async () => {
+    try {
+      const [s, parcelsList] = await Promise.all([
+        api.landProtection.stats().catch(() => ({ stats: null })),
+        api.landProtection.listParcels().catch(() => ({ parcels: [] })),
+      ]);
+      setStats(s.stats);
+      setParcels(parcelsList.parcels || []);
+
+      // Load emergency contacts
+      if (myFarmer?.farmer?.phone) {
+        const ec = await api.landProtection.getEmergencyContacts(myFarmer.farmer.phone).catch(() => ({ contacts: [] }));
+        setEmergencyContacts(ec.contacts || []);
+      }
+    } catch (err) { console.error(err); }
+    finally { setLoading(false); }
+  };
+
+  const myParcels = myFarmer 
+    ? parcels.filter(p => p.ownerPhone === myFarmer.farmer?.phone)
+    : [];
+
+  // GPS recording — continuous watch
+  const startRecording = () => {
+    if (!navigator.geolocation) {
+      alert('GPS not available on this device. Use manual entry below.');
+      return;
+    }
+    setRecording(true);
+    if (window._gpsWatchId) navigator.geolocation.clearWatch(window._gpsWatchId);
+
+    window._gpsWatchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        setCurrentGps({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+        });
+      },
+      (err) => {
+        console.warn('GPS error:', err.message);
+        if (err.code === 1) {
+          alert('Location permission denied. Enable in browser settings, or use manual entry.');
+        }
+      },
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 2000 }
+    );
+  };
+
+  const stopRecording = () => {
+    if (window._gpsWatchId) {
+      navigator.geolocation.clearWatch(window._gpsWatchId);
+      window._gpsWatchId = null;
+    }
+    setRecording(false);
+    setCurrentGps(null);
+  };
+
+  const recordWaypoint = () => {
+    if (!currentGps) {
+      alert('Waiting for GPS signal... Make sure you are outdoors with a clear view of the sky.');
+      return;
+    }
+    const label = `Point ${regForm.waypoints.length + 1}`;
+    const updated = [...regForm.waypoints, { ...currentGps, label }];
+    setRegForm({ ...regForm, waypoints: updated });
+    // Don't clear GPS — watch continues
+  };
+
+  const submitParcel = async () => {
+    if (!regForm.county) { alert('Location required'); return; }
+    if (regForm.waypoints.length < 3) { alert('Record at least 3 GPS waypoints to form a boundary'); return; }
+
+    // Use form fields (auto-filled if logged in, or manual entry)
+    const ownerName = regForm.ownerName || myFarmer?.farmer?.fullName;
+    const ownerPhone = regForm.ownerPhone || myFarmer?.farmer?.phone;
+    const ownerId = ownerPhone;
+
+    if (!ownerName) { alert('Owner name required'); return; }
+    if (!ownerPhone) { alert('Owner phone required'); return; }
+
+    const normalizedPhone = ownerPhone.startsWith('+') ? ownerPhone : normalizeKenyaPhone(ownerPhone);
+
+    try {
+      const result = await api.landProtection.registerParcel({
+        ownerId,
+        ownerName,
+        ownerPhone: normalizedPhone,
+        ...regForm,
+      });
+      if (!result.success) throw new Error(result.message);
+      alert('✅ Parcel registered! ID: ' + result.parcel.id);
+      await loadAll();
+      setView('home');
+      setRegForm({
+        county: '', subCounty: '', ward: '', village: '',
+        titleDeed: '', areaHectares: '', landUse: 'Mixed farming',
+        description: '', waypoints: [],
+      });
+      if (window._gpsWatchId) {
+        navigator.geolocation.clearWatch(window._gpsWatchId);
+        window._gpsWatchId = null;
+      }
+      setRecording(false);
+    } catch (err) { alert('Error: ' + err.message); }
+  };
+
+  const uploadDeed = async (parcelId) => {
+    if (!deedNumber) { alert('Enter title deed number'); return; }
+    try {
+      const result = await api.landProtection.uploadTitleDeed(parcelId, { titleDeedNumber: deedNumber });
+      if (!result.success) throw new Error(result.message);
+      alert('✅ Title deed vaulted! Hash: ' + result.parcel.titleDeedHash);
+      setDeedNumber('');
+      await loadAll();
+      const updated = await api.landProtection.getParcel(parcelId);
+      setSelectedParcel(updated.parcel);
+    } catch (err) { alert('Error: ' + err.message); }
+  };
+
+  const inviteWitness = async (parcelId) => {
+    if (!witnessForm.name || !witnessForm.phone) { alert('Name and phone required'); return; }
+    try {
+      const result = await api.landProtection.inviteWitness(parcelId, witnessForm);
+      if (!result.success) throw new Error(result.message);
+      alert('✅ Witness invited!\n\nCode: ' + result.witness.confirmationCode + '\n\nThey will receive an SMS. Share the code with them.');
+      setWitnessForm({ name: '', phone: '', relationship: 'Neighbor' });
+      const updated = await api.landProtection.getParcel(parcelId);
+      setSelectedParcel(updated.parcel);
+    } catch (err) { alert('Error: ' + err.message); }
+  };
+
+  const triggerSOS = async (parcelId) => {
+    if (!sosSituation) { alert('Describe the situation briefly'); return; }
+    if (!confirm('🚨 TRIGGER EVICTION SOS?\n\nThis will alert:\n• National Land Commission\n• Your emergency contacts\n• All 3 witnesses\n• Local police\n• FarmDirect admin\n\nOnly use if you are actually being evicted.')) return;
+    try {
+      const result = await api.landProtection.triggerSOS(parcelId, {
+        reporterName: myFarmer?.farmer?.fullName,
+        reporterPhone: myFarmer?.farmer?.phone,
+        situation: sosSituation,
+      });
+      if (!result.success) throw new Error(result.message);
+      alert('🚨 SOS SENT!\n\n' + result.sos.totalAlerts + ' alerts sent.\n\nHelp is coming. Stay safe.');
+      setSosActive(false);
+      setSosSituation('');
+      const updated = await api.landProtection.getParcel(parcelId);
+      setSelectedParcel(updated.parcel);
+    } catch (err) { alert('Error: ' + err.message); }
+  };
+
+  const verifyWithLivestock = async (parcelId) => {
+    // Get farmer's livestock
+    try {
+      const live = await api.shamba.listLivestock();
+      const myAnimals = (live.livestock || []).filter(a => 
+        a.ownerPhone === myFarmer.farmer?.phone && a.status === 'alive'
+      );
+      if (myAnimals.length === 0) {
+        alert('You have no livestock registered. Register animals first.');
+        return;
+      }
+      const passports = myAnimals.map(a => a.passportId);
+      const result = await api.landProtection.verifyWithLivestock(parcelId, passports);
+      if (!result.success) throw new Error(result.message);
+      alert('📊 VERIFICATION RESULT\n\n' + result.conclusion);
+    } catch (err) { alert('Error: ' + err.message); }
+  };
+
+  const saveEmergency = async () => {
+    if (!emergencyForm.name || !emergencyForm.phone) { alert('Name and phone required'); return; }
+    try {
+      const updated = [...emergencyContacts, emergencyForm];
+      await api.landProtection.saveEmergencyContacts(myFarmer.farmer?.phone, { contacts: updated });
+      setEmergencyContacts(updated);
+      setEmergencyForm({ name: '', phone: '', relationship: '' });
+      alert('✅ Contact saved');
+    } catch (err) { alert('Error: ' + err.message); }
+  };
+
+  const createLease = async (parcelId) => {
+    try {
+      const result = await api.landProtection.createLease({
+        parcelId,
+        landownerId: myFarmer.farmer?.phone,
+        ...leaseForm,
+      });
+      if (!result.success) throw new Error(result.message);
+      alert('✅ Lease created!\n\nApproval code: ' + result.lease.approvalCode + '\n\nSMS sent to landowner.');
+      setLeaseForm({
+        landownerName: '', landownerPhone: '', tenantName: '', tenantPhone: '',
+        purpose: 'Cattle grazing', monthlyFee: '', startDate: '', endDate: '', terms: '',
+      });
+      setView('home');
+    } catch (err) { alert('Error: ' + err.message); }
+  };
+
+  if (loading) return <div style={{padding:40,textAlign:'center'}}>Loading land records...</div>;
+
+  // ─── HOME ───
+  if (view === 'home') {
+    return (
+      <div>
+        <h4 style={{fontSize:16,marginBottom:12}}>🏠 Land Sovereignty</h4>
+
+        {stats && (
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:12}}>
+            <div style={{background:'#E8F5E9',padding:10,borderRadius:10,textAlign:'center'}}>
+              <strong style={{fontSize:18,color:'#2E7D32'}}>{stats.verifiedParcels}</strong>
+              <p style={{fontSize:9,color:'#666',margin:0}}>Verified</p>
+            </div>
+            <div style={{background:'#FFF3E0',padding:10,borderRadius:10,textAlign:'center'}}>
+              <strong style={{fontSize:18,color:'#E65100'}}>{stats.totalHectares.toFixed(1)}</strong>
+              <p style={{fontSize:9,color:'#666',margin:0}}>Hectares</p>
+            </div>
+            <div style={{background:'#E3F2FD',padding:10,borderRadius:10,textAlign:'center'}}>
+              <strong style={{fontSize:18,color:'#1565C0'}}>{stats.confirmedWitnesses}</strong>
+              <p style={{fontSize:9,color:'#666',margin:0}}>Witnesses</p>
+            </div>
+          </div>
+        )}
+
+        <div style={{background:'#E3F2FD',padding:12,borderRadius:10,marginBottom:12,border:'1px solid #90CAF9'}}>
+          <strong style={{fontSize:12,color:'#0D47A1'}}>🛡️ Your Land, Protected</strong>
+          <p style={{fontSize:11,color:'#1565C0',margin:'4px 0 0'}}>
+            GPS boundary + title deed hash + 3 witnesses = immutable proof that cannot be burned, stolen, or deleted.
+          </p>
+        </div>
+
+        <button onClick={() => { setView('register'); startRecording(); }} style={{...primaryBtn, background:'#2E7D32'}}>
+          ➕ Register New Parcel
+        </button>
+
+        <h5 style={{fontSize:14,marginTop:16,marginBottom:8}}>My Parcels ({myParcels.length})</h5>
+
+        {myParcels.length === 0 && (
+          <p style={{textAlign:'center',color:'#999',padding:20,fontSize:13}}>No parcels registered yet</p>
+        )}
+
+        {myParcels.map(p => (
+          <div key={p.id} onClick={async () => {
+            const detail = await api.landProtection.getParcel(p.id);
+            setSelectedParcel(detail.parcel);
+            setView('detail');
+          }} style={{
+            background: p.status === 'verified' ? '#E8F5E9' : p.status === 'disputed' ? '#FFEBEE' : '#FFF3E0',
+            borderRadius:12,padding:14,marginBottom:8,border:'1px solid #E0E0E0',cursor:'pointer'
+          }}>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+              <strong style={{fontSize:13,fontFamily:'monospace'}}>{p.id}</strong>
+              <span style={{background: p.status === 'verified' ? '#2E7D32' : p.status === 'disputed' ? '#C62828' : '#FF9800', color:'white', padding:'2px 8px', borderRadius:6, fontSize:10, fontWeight:'bold'}}>
+                {p.status === 'verified' ? '✅ VERIFIED' : p.status === 'disputed' ? '🚨 DISPUTED' : '⏳ PENDING'}
+              </span>
+            </div>
+            <p style={{fontSize:12,margin:'2px 0'}}>📍 {p.village || p.ward}, {p.county}</p>
+            <p style={{fontSize:12,margin:'2px 0'}}>📏 {p.areaHectares} hectares • {p.landUse}</p>
+            <p style={{fontSize:11,margin:'4px 0 0',color:'#666'}}>
+              🛰️ {p.waypoints.length} GPS points • 👥 {p.confirmedWitnesses}/3 witnesses
+            </p>
+            {p.landmarkHash && <p style={{fontSize:10,margin:'2px 0 0',color:'#999',fontFamily:'monospace'}}>{p.landmarkHash}</p>}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // ─── REGISTER PARCEL ───
+  if (view === 'register') {
+    return (
+      <div>
+        <button onClick={() => { setView('home'); setRecording(false); }} style={{background:'none',border:'none',color:'#2E7D32',fontWeight:'bold',cursor:'pointer',marginBottom:8,fontSize:14}}>← Back</button>
+        <h4 style={{fontSize:16,marginBottom:12}}>🏠 Register Land Parcel</h4>
+
+        {/* OWNER INFO — only shown if not logged in as farmer */}
+        {!myFarmer && (
+          <div style={{background:'#F0F4F8',padding:12,borderRadius:10,marginBottom:12,border:'1px solid #90CAF9'}}>
+            <strong style={{fontSize:13,color:'#0D47A1'}}>👤 Land Owner Information</strong>
+            <p style={{fontSize:11,color:'#666',margin:'4px 0 10px'}}>You're not logged in as a farmer. Fill in your details below.</p>
+
+            <label style={labelStyle}>Full Name *</label>
+            <input 
+              value={regForm.ownerName} 
+              onChange={e => setRegForm({...regForm, ownerName: e.target.value})} 
+              placeholder="e.g. Kipngetich Clinton" 
+              style={inputStyle} 
+            />
+
+            <label style={labelStyle}>Phone Number *</label>
+            <input 
+              value={regForm.ownerPhone} 
+              onChange={e => setRegForm({...regForm, ownerPhone: e.target.value})} 
+              onBlur={e => e.target.value && setRegForm({...regForm, ownerPhone: normalizeKenyaPhone(e.target.value)})}
+              placeholder="0704519744" 
+              type="tel"
+              style={inputStyle} 
+            />
+          </div>
+        )}
+
+        {/* SHARED LOCATION PICKER */}
+        <LocationPicker 
+          value={regForm.location} 
+          onChange={(loc) => {
+            if (!loc) return;
+            setRegForm({
+              ...regForm,
+              location: loc,
+              county: loc.county || '',
+              subCounty: loc.subCounty || '',
+              ward: loc.ward || '',
+              village: loc.area || loc.locality || '',
+            });
+          }} 
+          required 
+          label="Where is the land located?" 
+        />
+
+        {regForm.county && (
+          <div style={{background:'#E8F5E9',padding:10,borderRadius:8,marginBottom:12,fontSize:11}}>
+            <strong style={{color:'#2E7D32'}}>📍 Location set:</strong>
+            <br />
+            {[regForm.village, regForm.ward, regForm.subCounty, regForm.county].filter(Boolean).join(', ')}
+          </div>
+        )}
+
+        <label style={labelStyle}>Title Deed Number</label>
+        <input value={regForm.titleDeed} onChange={e => setRegForm({...regForm, titleDeed: e.target.value})} placeholder="BOM/2024/001" style={inputStyle} />
+
+        <label style={labelStyle}>Area (Hectares) — optional, computed from GPS</label>
+        <input type="number" step="0.01" value={regForm.areaHectares} onChange={e => setRegForm({...regForm, areaHectares: e.target.value})} placeholder="2.5" style={inputStyle} />
+
+        <label style={labelStyle}>Land Use</label>
+        <select value={regForm.landUse} onChange={e => setRegForm({...regForm, landUse: e.target.value})} style={{...inputStyle, background:'white'}}>
+          <option>Mixed farming</option>
+          <option>Crop farming</option>
+          <option>Livestock grazing</option>
+          <option>Residential</option>
+          <option>Commercial</option>
+        </select>
+
+        {/* GPS RECORDING */}
+        <div style={{background:'#E8F5E9',padding:14,borderRadius:12,marginTop:16,marginBottom:12,border:'2px solid #4CAF50'}}>
+          <strong style={{fontSize:14,color:'#1B5E20'}}>🛰️ GPS Boundary Recording</strong>
+          <p style={{fontSize:11,color:'#666',margin:'4px 0 8px'}}>
+            Walk to each corner of your land. Tap "Record Point" at every corner. Need 3+ points.
+          </p>
+
+          {/* GPS ENABLE BUTTON */}
+          {!recording && (
+            <button
+              onClick={startRecording}
+              style={{
+                width:'100%',
+                padding:14,
+                borderRadius:10,
+                background:'#1565C0',
+                color:'white',
+                border:'none',
+                fontSize:14,
+                fontWeight:'bold',
+                cursor:'pointer',
+                marginBottom:10,
+              }}
+            >
+              📡 Enable GPS Tracking
+            </button>
+          )}
+
+          {recording && !currentGps && (
+            <div style={{background:'#FFF8E1',padding:10,borderRadius:8,marginBottom:8,fontSize:11,color:'#E65100'}}>
+              📡 Acquiring GPS signal... Please wait or move to open sky.
+            </div>
+          )}
+
+          {currentGps && (
+            <div style={{background:'#E8F5E9',padding:10,borderRadius:8,marginBottom:8,fontSize:11,border:'1px solid #A5D6A7'}}>
+              <strong style={{color:'#2E7D32'}}>✅ GPS Active</strong>
+              <br /><strong>Position:</strong> {currentGps.lat.toFixed(6)}, {currentGps.lng.toFixed(6)}
+              <br /><span style={{color:'#666'}}>Accuracy: ±{Math.round(currentGps.accuracy)}m</span>
+            </div>
+          )}
+
+          <button onClick={recordWaypoint} disabled={!currentGps} style={{
+            ...primaryBtn, 
+            background: currentGps ? '#4CAF50' : '#ccc',
+            marginTop:8,
+          }}>
+            📍 Record Point #{regForm.waypoints.length + 1}
+          </button>
+
+          {/* Manual coordinate entry fallback */}
+          <div style={{marginTop:12,paddingTop:12,borderTop:'1px dashed #A5D6A7'}}>
+            <strong style={{fontSize:11,color:'#555',display:'block',marginBottom:6}}>Or enter coordinates manually:</strong>
+            <div style={{display:'flex',gap:6}}>
+              <input 
+                type="number" 
+                step="0.000001"
+                placeholder="Latitude"
+                id="manualLat"
+                style={{...inputStyle, marginBottom:0, fontSize:12, padding:'8px 10px'}}
+              />
+              <input 
+                type="number" 
+                step="0.000001"
+                placeholder="Longitude"
+                id="manualLng"
+                style={{...inputStyle, marginBottom:0, fontSize:12, padding:'8px 10px'}}
+              />
+            </div>
+            <button 
+              onClick={() => {
+                const lat = parseFloat(document.getElementById('manualLat').value);
+                const lng = parseFloat(document.getElementById('manualLng').value);
+                if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
+                  alert('Enter valid latitude and longitude');
+                  return;
+                }
+                const label = `Point ${regForm.waypoints.length + 1}`;
+                const updated = [...regForm.waypoints, { lat, lng, label, manual: true }];
+                setRegForm({ ...regForm, waypoints: updated });
+                document.getElementById('manualLat').value = '';
+                document.getElementById('manualLng').value = '';
+              }}
+              style={{...primaryBtn, background:'#1565C0', marginTop:8, fontSize:13, padding:'10px 14px'}}
+            >
+              ➕ Add Manual Point
+            </button>
+            <p style={{fontSize:10,color:'#666',margin:'6px 0 0',lineHeight:1.4}}>
+              💡 How to find your coordinates: Open Google Maps → long-press your farm location → copy the lat/lng numbers.
+            </p>
+          </div>
+
+          {regForm.waypoints.length > 0 && (
+            <div style={{marginTop:12}}>
+              <strong style={{fontSize:12,color:'#333'}}>Recorded Points ({regForm.waypoints.length}):</strong>
+              {regForm.waypoints.map((w, i) => (
+                <div key={i} style={{background:'white',padding:8,borderRadius:6,marginTop:4,fontSize:10,fontFamily:'monospace'}}>
+                  {w.label}: {w.lat.toFixed(6)}, {w.lng.toFixed(6)}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <label style={labelStyle}>Description (optional)</label>
+        <textarea value={regForm.description} onChange={e => setRegForm({...regForm, description: e.target.value})} placeholder="e.g. Family land, inherited from grandfather" rows={2} style={{...inputStyle, resize:'vertical'}} />
+
+        <div style={{display:'flex',gap:8,marginTop:16}}>
+          <button onClick={() => { setView('home'); setRecording(false); }} style={{...primaryBtn, background:'#F0F0F0', color:'#666', flex:1}}>Cancel</button>
+          <button onClick={submitParcel} disabled={regForm.waypoints.length < 3} style={{...primaryBtn, background: regForm.waypoints.length >= 3 ? '#2E7D32' : '#ccc', flex:2}}>
+            ✅ Register Parcel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── PARCEL DETAIL ───
+  if (view === 'detail' && selectedParcel) {
+    const p = selectedParcel;
+    const progress = p.verificationProgress || { required: 3, confirmed: 0, percent: 0 };
+
+    return (
+      <div>
+        <button onClick={() => setView('home')} style={{background:'none',border:'none',color:'#2E7D32',fontWeight:'bold',cursor:'pointer',marginBottom:8,fontSize:14}}>← Back</button>
+
+        <div style={{background: p.status === 'verified' ? '#E8F5E9' : '#FFF3E0', padding:14, borderRadius:12, marginBottom:12, border:'1px solid #E0E0E0'}}>
+          <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+            <strong style={{fontSize:13,fontFamily:'monospace'}}>{p.id}</strong>
+            <span style={{background: p.status === 'verified' ? '#2E7D32' : '#FF9800', color:'white', padding:'2px 8px', borderRadius:6, fontSize:10, fontWeight:'bold'}}>
+              {p.status.toUpperCase()}
+            </span>
+          </div>
+          <p style={{fontSize:12,margin:'2px 0'}}>📍 {p.village || p.ward}, {p.county}</p>
+          <p style={{fontSize:12,margin:'2px 0'}}>📏 {p.areaHectares} ha • {p.landUse}</p>
+          <p style={{fontSize:11,margin:'4px 0 0',color:'#666'}}>🛰️ {p.waypoints.length} GPS points</p>
+          {p.landmarkHash && <p style={{fontSize:10,margin:'4px 0 0',color:'#999',fontFamily:'monospace'}}>{p.landmarkHash}</p>}
+        </div>
+
+        {/* SOS BUTTON */}
+        {!sosActive ? (
+          <button onClick={() => setSosActive(true)} style={{
+            width:'100%',padding:16,borderRadius:12,
+            background:'#C62828',color:'white',border:'none',
+            fontSize:16,fontWeight:'bold',cursor:'pointer',
+            marginBottom:12,boxShadow:'0 4px 12px rgba(198,40,40,0.3)',
+          }}>🚨 EVICTION SOS</button>
+        ) : (
+          <div style={{background:'#FFEBEE',padding:14,borderRadius:12,marginBottom:12,border:'2px solid #C62828'}}>
+            <strong style={{fontSize:13,color:'#C62828'}}>🚨 Trigger Eviction SOS?</strong>
+            <textarea value={sosSituation} onChange={e => setSosSituation(e.target.value)} placeholder="Describe the situation..." rows={3} style={{...inputStyle, marginTop:8}} />
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={() => setSosActive(false)} style={{...primaryBtn, background:'#F0F0F0', color:'#666', flex:1}}>Cancel</button>
+              <button onClick={() => triggerSOS(p.id)} style={{...primaryBtn, background:'#C62828', flex:2}}>🚨 SEND SOS</button>
+            </div>
+          </div>
+        )}
+
+        {/* TITLE DEED */}
+        <div style={{background:'#F9FAFB',padding:14,borderRadius:12,marginBottom:12}}>
+          <strong style={{fontSize:13,color:'#1565C0'}}>📜 Title Deed Vault</strong>
+          {p.titleDeedHash ? (
+            <div style={{marginTop:8}}>
+              <p style={{fontSize:11,color:'#2E7D32',fontWeight:'bold'}}>✅ Vaulted</p>
+              <p style={{fontSize:10,color:'#666',fontFamily:'monospace'}}>{p.titleDeedHash}</p>
+            </div>
+          ) : (
+            <div style={{marginTop:8}}>
+              <input value={deedNumber} onChange={e => setDeedNumber(e.target.value)} placeholder="Title deed number" style={inputStyle} />
+              <button onClick={() => uploadDeed(p.id)} style={{...primaryBtn, background:'#1565C0'}}>🔒 Store in Vault</button>
+            </div>
+          )}
+        </div>
+
+        {/* WITNESSES */}
+        <div style={{background:'#F9FAFB',padding:14,borderRadius:12,marginBottom:12}}>
+          <strong style={{fontSize:13,color:'#E65100'}}>👥 Witness Verification ({progress.confirmed}/{progress.required})</strong>
+          <div style={{background:'#E0E0E0',height:8,borderRadius:4,marginTop:8,overflow:'hidden'}}>
+            <div style={{width: progress.percent + '%', height:'100%', background: progress.percent >= 100 ? '#4CAF50' : '#FF9800', transition:'width 0.3s'}} />
+          </div>
+
+          {(p.witnessDetails || []).map(w => (
+            <div key={w.id} style={{background:'white',padding:10,borderRadius:8,marginTop:8,fontSize:11}}>
+              <div style={{display:'flex',justifyContent:'space-between'}}>
+                <strong>{w.name}</strong>
+                <span style={{background: w.status === 'confirmed' ? '#2E7D32' : '#FF9800', color:'white', padding:'1px 6px', borderRadius:4, fontSize:9, fontWeight:'bold'}}>
+                  {w.status.toUpperCase()}
+                </span>
+              </div>
+              <p style={{margin:'2px 0',color:'#666'}}>{w.relationship} • {w.phone}</p>
+              {w.status === 'invited' && <p style={{margin:'2px 0',color:'#E65100',fontFamily:'monospace',fontSize:10}}>Code: {w.confirmationCode}</p>}
+            </div>
+          ))}
+
+          {progress.confirmed < 3 && (
+            <div style={{marginTop:10}}>
+              <input value={witnessForm.name} onChange={e => setWitnessForm({...witnessForm, name: e.target.value})} placeholder="Witness name" style={inputStyle} />
+              <input value={witnessForm.phone} onChange={e => setWitnessForm({...witnessForm, phone: e.target.value})} onBlur={e => e.target.value && setWitnessForm({...witnessForm, phone: normalizeKenyaPhone(e.target.value)})} placeholder="0712345678" type="tel" style={inputStyle} />
+              <select value={witnessForm.relationship} onChange={e => setWitnessForm({...witnessForm, relationship: e.target.value})} style={{...inputStyle, background:'white'}}>
+                <option>Neighbor</option>
+                <option>Chief</option>
+                <option>Relative</option>
+                <option>Elder</option>
+              </select>
+              <button onClick={() => inviteWitness(p.id)} style={{...primaryBtn, background:'#E65100'}}>👥 Invite Witness</button>
+            </div>
+          )}
+        </div>
+
+        {/* LAND-LIVESTOCK MATCH */}
+        <button onClick={() => verifyWithLivestock(p.id)} style={{...primaryBtn, background:'#1565C0', marginBottom:12}}>
+          🐄 Verify with My Livestock
+        </button>
+
+        {/* CREATE LEASE */}
+        <button onClick={() => setView('lease-create')} style={{...primaryBtn, background:'#7B1FA2'}}>
+          📄 Create Grazing Lease
+        </button>
+
+        {/* HISTORY */}
+        <div style={{background:'#F9FAFB',padding:14,borderRadius:12,marginTop:12}}>
+          <strong style={{fontSize:12,color:'#333'}}>📋 History</strong>
+          {(p.history || []).slice(-8).reverse().map((h, i) => (
+            <div key={i} style={{fontSize:11,padding:'6px 0',borderBottom:'1px solid #E0E0E0'}}>
+              <strong>{h.action}</strong>
+              <p style={{margin:'2px 0',color:'#666',fontSize:10}}>{new Date(h.at).toLocaleString()}</p>
+              <p style={{margin:0,color:'#666',fontSize:10}}>{h.note}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ─── CREATE LEASE ───
+  if (view === 'lease-create' && selectedParcel) {
+    return (
+      <div>
+        <button onClick={() => setView('detail')} style={{background:'none',border:'none',color:'#2E7D32',fontWeight:'bold',cursor:'pointer',marginBottom:8,fontSize:14}}>← Back</button>
+        <h4 style={{fontSize:16,marginBottom:12}}>📄 Create Grazing Lease</h4>
+
+        <label style={labelStyle}>Landowner Name *</label>
+        <input value={leaseForm.landownerName} onChange={e => setLeaseForm({...leaseForm, landownerName: e.target.value})} placeholder="Sarah Wanjiku" style={inputStyle} />
+
+        <label style={labelStyle}>Landowner Phone *</label>
+        <input value={leaseForm.landownerPhone} onChange={e => setLeaseForm({...leaseForm, landownerPhone: e.target.value})} onBlur={e => e.target.value && setLeaseForm({...leaseForm, landownerPhone: normalizeKenyaPhone(e.target.value)})} placeholder="0722334455" type="tel" style={inputStyle} />
+
+        <label style={labelStyle}>Tenant Name (you) *</label>
+        <input value={leaseForm.tenantName} onChange={e => setLeaseForm({...leaseForm, tenantName: e.target.value})} placeholder="James Kiprop" style={inputStyle} />
+
+        <label style={labelStyle}>Tenant Phone *</label>
+        <input value={leaseForm.tenantPhone} onChange={e => setLeaseForm({...leaseForm, tenantPhone: e.target.value})} onBlur={e => e.target.value && setLeaseForm({...leaseForm, tenantPhone: normalizeKenyaPhone(e.target.value)})} placeholder="0712345678" type="tel" style={inputStyle} />
+
+        <label style={labelStyle}>Purpose</label>
+        <select value={leaseForm.purpose} onChange={e => setLeaseForm({...leaseForm, purpose: e.target.value})} style={{...inputStyle, background:'white'}}>
+          <option>Cattle grazing</option>
+          <option>Goat grazing</option>
+          <option>Camel grazing</option>
+          <option>Crop farming</option>
+          <option>Mixed use</option>
+        </select>
+
+        <label style={labelStyle}>Monthly Fee (KES)</label>
+        <input type="number" value={leaseForm.monthlyFee} onChange={e => setLeaseForm({...leaseForm, monthlyFee: e.target.value})} placeholder="15000" style={inputStyle} />
+
+        <label style={labelStyle}>Start Date</label>
+        <input type="date" value={leaseForm.startDate} onChange={e => setLeaseForm({...leaseForm, startDate: e.target.value})} style={inputStyle} />
+
+        <label style={labelStyle}>End Date</label>
+        <input type="date" value={leaseForm.endDate} onChange={e => setLeaseForm({...leaseForm, endDate: e.target.value})} style={inputStyle} />
+
+        <label style={labelStyle}>Terms</label>
+        <textarea value={leaseForm.terms} onChange={e => setLeaseForm({...leaseForm, terms: e.target.value})} placeholder="e.g. Tenant may graze up to 20 cattle" rows={2} style={{...inputStyle, resize:'vertical'}} />
+
+        <div style={{display:'flex',gap:8,marginTop:16}}>
+          <button onClick={() => setView('detail')} style={{...primaryBtn, background:'#F0F0F0', color:'#666', flex:1}}>Cancel</button>
+          <button onClick={() => createLease(selectedParcel.id)} disabled={!leaseForm.landownerName || !leaseForm.landownerPhone || !leaseForm.tenantName || !leaseForm.tenantPhone} style={{...primaryBtn, background:'#7B1FA2', flex:2}}>📄 Create Lease</button>
+        </div>
       </div>
     );
   }
