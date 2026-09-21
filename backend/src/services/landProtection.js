@@ -54,8 +54,17 @@ function registerParcel(data) {
 
     // Land details
     titleDeed: data.titleDeed || null,
-    areaHectares: data.areaHectares ? parseFloat(data.areaHectares) : computedArea,
-    areaComputed: computedArea,
+    areaProvisional: computedArea,     // object from computePolygonArea (not yet official)
+    areaSqMeters: null,                // official — set on payment
+    areaHectares: null,                // official — set on payment
+    areaAcres: null,                   // official — set on payment
+    areaDisplay: '⏳ Pending payment',
+    perimeterMeters: null,
+    boundarySegments: [],
+    areaWarning: null,
+    areaDeed: data.areaHectares ? parseFloat(data.areaHectares) : null,
+    boundaryFrozenAt: null,
+    boundaryFrozenHash: null,
     landUse: data.landUse || 'Mixed farming',
     description: data.description || '',
 
@@ -105,7 +114,7 @@ function registerParcel(data) {
   persist();
 
   console.log('🏠 Parcel registered:', id, '|', data.ownerName);
-  console.log('   Area:', parcel.areaHectares, 'ha');
+  console.log('   Area:', parcel.areaProvisional?.display || 'unknown');
   console.log('   Waypoints:', parcel.waypoints.length);
 
   return parcel;
@@ -144,6 +153,61 @@ function addWaypoint(parcelId, waypoint) {
 /**
  * Compute polygon area from GPS waypoints (Haversine + shoelace)
  */
+function haversine(p1, p2) {
+  const R = 6371000;
+  const lat1 = p1.lat * Math.PI / 180;
+  const lat2 = p2.lat * Math.PI / 180;
+  const dLat = (p2.lat - p1.lat) * Math.PI / 180;
+  const dLng = (p2.lng - p1.lng) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+            Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function computeBoundarySegments(waypoints) {
+  const segments = [];
+  for (let i = 0; i < waypoints.length; i++) {
+    const j = (i + 1) % waypoints.length;
+    segments.push({
+      from: waypoints[i].label || `Point ${i + 1}`,
+      to: waypoints[j].label || `Point ${j + 1}`,
+      meters: Math.round(haversine(waypoints[i], waypoints[j]) * 10) / 10,
+    });
+  }
+  return segments;
+}
+
+function computePerimeter(waypoints) {
+  let total = 0;
+  for (let i = 0; i < waypoints.length; i++) {
+    total += haversine(waypoints[i], waypoints[(i + 1) % waypoints.length]);
+  }
+  return total;
+}
+
+function formatArea(sqMeters) {
+  if (!sqMeters || sqMeters < 0.01) return '0 m²';
+  if (sqMeters < 1) return `${sqMeters.toFixed(2)} m²`;
+  if (sqMeters < 1000) return `${Math.round(sqMeters)} m²`;
+  if (sqMeters < 4000) return `${(sqMeters / 4046.86).toFixed(2)} acres`;
+  if (sqMeters < 100000) {
+    return `${(sqMeters / 4046.86).toFixed(2)} acres (${(sqMeters / 10000).toFixed(2)} ha)`;
+  }
+  return `${(sqMeters / 10000).toFixed(2)} ha`;
+}
+
+function computeBoundaryHash(waypoints) {
+  const crypto = require('crypto');
+  const canonical = waypoints
+    .map(w => `${Number(w.lat).toFixed(7)},${Number(w.lng).toFixed(7)}`)
+    .join('|');
+  return 'BD-' + crypto.createHash('sha256')
+    .update(canonical)
+    .digest('hex')
+    .substring(0, 16)
+    .toUpperCase();
+}
+
 function computePolygonArea(waypoints) {
   if (!waypoints || waypoints.length < 3) return null;
   
@@ -166,7 +230,28 @@ function computePolygonArea(waypoints) {
   const areaSqMeters = Math.abs(area * R * R / 2);
   const areaHectares = areaSqMeters / 10000;
   
-  return Math.round(areaHectares * 100) / 100;
+  const areaAcres = areaSqMeters / 4046.86;
+  const perimeterMeters = computePerimeter(waypoints);
+  const boundarySegments = computeBoundarySegments(waypoints);
+
+  const worstAccuracy = Math.max(...waypoints.map(w => Number(w.accuracy) || 0));
+  let warning = null;
+  if (areaSqMeters < 100) {
+    warning = 'Area under 100 m² — walk the full boundary';
+  } else if (worstAccuracy > 10) {
+    warning = `GPS accuracy ±${Math.round(worstAccuracy)}m — too imprecise for legal use`;
+  }
+
+  return {
+    sqMeters: Math.round(areaSqMeters * 100) / 100,
+    hectares: Math.round(areaHectares * 1000000) / 1000000,
+    acres: Math.round(areaAcres * 10000) / 10000,
+    perimeterMeters: Math.round(perimeterMeters),
+    boundarySegments,
+    display: formatArea(areaSqMeters),
+    warning,
+    worstAccuracy: Math.round(worstAccuracy),
+  };
 }
 
 // ═════════════════════════════════════════════════════
@@ -378,7 +463,7 @@ function getStats() {
     totalParcels: all.length,
     verifiedParcels: all.filter(p => p.status === 'verified').length,
     pendingVerification: all.filter(p => p.status === 'pending_witnesses').length,
-    totalHectares: all.reduce((s, p) => s + (p.areaHectares || 0), 0),
+    totalHectares: all.reduce((s, p) => s + ((p.areaSqMeters || 0) / 10000), 0),
     totalWitnesses: allWitnesses.length,
     confirmedWitnesses: allWitnesses.filter(w => w.status === 'confirmed').length,
     titleDeedsVaulted: deedVault.size,
@@ -462,7 +547,7 @@ async function triggerEvictionSOS(parcelId, data) {
 Owner: ${parcel.ownerName}
 Location: ${parcel.village || parcel.ward}, ${parcel.county}
 GPS: ${parcel.waypoints.length > 0 ? `${parcel.waypoints[0].lat}, ${parcel.waypoints[0].lng}` : 'Not recorded'}
-Area: ${parcel.areaHectares} ha
+Area: ${parcel.areaDisplay || 'pending'}
 Witnesses: ${parcelWitnesses.length} confirmed
 Landmark Hash: ${parcel.landmarkHash || 'N/A'}`;
 
@@ -868,6 +953,22 @@ module.exports._leases = leases;
 /**
  * Initiate KES 500 registration fee STK push for a parcel
  */
+function promoteAreaToOfficial(parcel) {
+  if (!parcel.areaProvisional) return;
+
+  parcel.areaSqMeters = parcel.areaProvisional.sqMeters;
+  parcel.areaHectares = parcel.areaProvisional.hectares;
+  parcel.areaAcres = parcel.areaProvisional.acres;
+  parcel.areaDisplay = parcel.areaProvisional.display;
+  parcel.perimeterMeters = parcel.areaProvisional.perimeterMeters;
+  parcel.boundarySegments = parcel.areaProvisional.boundarySegments;
+  parcel.areaWarning = parcel.areaProvisional.warning;
+  parcel.boundaryFrozenAt = new Date().toISOString();
+  parcel.boundaryFrozenHash = computeBoundaryHash(parcel.waypoints);
+
+  console.log('🔒 Boundary frozen for', parcel.id, '|', parcel.areaDisplay, '| hash:', parcel.boundaryFrozenHash);
+}
+
 async function initiateParcelPayment(parcelId, phone) {
   const parcel = parcels.get(parcelId);
   if (!parcel) return { error: 'Parcel not found' };
@@ -882,7 +983,8 @@ async function initiateParcelPayment(parcelId, phone) {
     parcel.feePaidAt = new Date().toISOString();
     parcel.paymentRef = 'SIMULATED-' + Date.now();
     parcel.status = 'draft';
-    parcel.history.push({ action: 'fee_paid', at: parcel.feePaidAt, note: 'KES ' + parcel.fee + ' (simulated)' });
+    promoteAreaToOfficial(parcel);
+    parcel.history.push({ action: 'fee_paid', at: parcel.feePaidAt, note: 'KES ' + parcel.fee + ' (simulated) | ' + (parcel.areaDisplay || '') });
     persist();
     return { record: parcel, stk: null };
   }
@@ -993,7 +1095,8 @@ async function confirmParcelPayment(checkoutRequestId, callbackData) {
     parcel.paymentRef = callbackData.mpesaReceipt;
     parcel.fee = callbackData.amount;
     parcel.status = 'draft';
-    parcel.history.push({ action: 'fee_paid', at: parcel.feePaidAt, note: 'KES ' + callbackData.amount + ' | ' + callbackData.mpesaReceipt });
+    promoteAreaToOfficial(parcel);
+    parcel.history.push({ action: 'fee_paid', at: parcel.feePaidAt, note: 'KES ' + callbackData.amount + ' | ' + callbackData.mpesaReceipt + ' | ' + (parcel.areaDisplay || '') });
   }
 
   persist();
