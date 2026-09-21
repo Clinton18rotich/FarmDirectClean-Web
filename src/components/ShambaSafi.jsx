@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import LocationPicker from './LocationPicker';
+import PhysicalProfileForm from './PhysicalProfileForm';
+import MeasurementGuideModal from './MeasurementGuideModal';
 import { api } from '../services/api';
 import { normalizeKenyaPhone, isValidKenyaPhone } from '../utils/phone';
 
@@ -234,13 +236,34 @@ function LandModule({ myFarmer, myLand, reload }) {
 // ═══════════════════════════════════════════════════
 function LivestockModule({ myFarmer, myLivestock, reload }) {
   const [view, setView] = useState('list');
+  
+  // Load physical attribute constants on mount
+  useEffect(() => {
+    api.shamba.physicalAttributes()
+      .then(r => setConstants(r.attributes))
+      .catch(err => console.error('Failed to load attributes:', err));
+  }, []);
   const [tab, setTab] = useState('alive');
   const [form, setForm] = useState({
     type: 'Cow', breed: '', age: '', gender: 'Female', color: '', location: null,
     isNewborn: false, motherPassport: '', fatherPassport: '', birthWeight: '',
+    // Physical profile (all optional)
+    weight: '', heartGirth: '', bodyLength: '', heightAtWithers: '',
+    bodyConditionScore: '', muscleCondition: '', fatCover: '',
+    coatCondition: '', skinCondition: '', skinProblems: [], coatColorPattern: '',
+    udderSize: '', udderShape: '', teatCondition: '', milkVeins: '',
+    lactationStatus: '', dailyMilkYield: '', pregnancyStatus: '', pregnancyMonths: '',
+    calvingHistory: '', lastCalvingDate: '',
+    horns: '', eyes: '', teethAge: '', ears: '', muzzle: '',
+    hooves: '', legs: '', walking: '', jointSwelling: '',
+    purpose: '', breedPurity: '', sireInfo: '', damInfo: '', feedRegime: '',
+    vaccinationCard: '', vetCertificate: '', movementPermit: '',
+    brandMark: false, earTag: false,
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const [showGuide, setShowGuide] = useState(false);
+  const [constants, setConstants] = useState(null);
 
   // Death modal
   const [deathTarget, setDeathTarget] = useState(null);
@@ -262,6 +285,7 @@ function LivestockModule({ myFarmer, myLivestock, reload }) {
     setSubmitting(true);
     try {
       const result = await api.shamba.registerLivestock({
+        // Owner & basic
         ownerId: myFarmer.farmer?.phone,
         ownerName: myFarmer.farmer?.fullName,
         ownerPhone: myFarmer.farmer?.phone,
@@ -275,12 +299,68 @@ function LivestockModule({ myFarmer, myLivestock, reload }) {
         motherPassport: form.motherPassport || null,
         fatherPassport: form.fatherPassport || null,
         birthWeight: form.birthWeight || null,
+
+        // Physical profile (all optional)
+        weight: form.weight || null,
+        heartGirth: form.heartGirth || null,
+        bodyLength: form.bodyLength || null,
+        heightAtWithers: form.heightAtWithers || null,
+        bodyConditionScore: form.bodyConditionScore || null,
+        muscleCondition: form.muscleCondition || null,
+        fatCover: form.fatCover || null,
+        coatCondition: form.coatCondition || null,
+        skinCondition: form.skinCondition || null,
+        skinProblems: form.skinProblems || [],
+        coatColorPattern: form.coatColorPattern || null,
+        udderSize: form.udderSize || null,
+        udderShape: form.udderShape || null,
+        teatCondition: form.teatCondition || null,
+        milkVeins: form.milkVeins || null,
+        lactationStatus: form.lactationStatus || null,
+        dailyMilkYield: form.dailyMilkYield || null,
+        pregnancyStatus: form.pregnancyStatus || null,
+        pregnancyMonths: form.pregnancyMonths || null,
+        calvingHistory: form.calvingHistory || null,
+        lastCalvingDate: form.lastCalvingDate || null,
+        horns: form.horns || null,
+        eyes: form.eyes || null,
+        teethAge: form.teethAge || null,
+        ears: form.ears || null,
+        muzzle: form.muzzle || null,
+        hooves: form.hooves || null,
+        legs: form.legs || null,
+        walking: form.walking || null,
+        jointSwelling: form.jointSwelling || null,
+        purpose: form.purpose || null,
+        breedPurity: form.breedPurity || null,
+        sireInfo: form.sireInfo || null,
+        damInfo: form.damInfo || null,
+        feedRegime: form.feedRegime || null,
+        vaccinationCard: form.vaccinationCard || null,
+        vetCertificate: form.vetCertificate || null,
+        movementPermit: form.movementPermit || null,
+        brandMark: form.brandMark || false,
+        earTag: form.earTag || false,
       });
       if (!result.success) throw new Error(result.message);
       alert('✅ ' + form.type + ' registered!\nPassport: ' + result.livestock.passportId);
       await reload();
       setView('list');
-      setForm({ type: 'Cow', breed: '', age: '', gender: 'Female', color: '', location: null, isNewborn: false, motherPassport: '', fatherPassport: '', birthWeight: '' });
+      setForm({
+        type: 'Cow', breed: '', age: '', gender: 'Female', color: '', location: null,
+        isNewborn: false, motherPassport: '', fatherPassport: '', birthWeight: '',
+        weight: '', heartGirth: '', bodyLength: '', heightAtWithers: '',
+        bodyConditionScore: '', muscleCondition: '', fatCover: '',
+        coatCondition: '', skinCondition: '', skinProblems: [], coatColorPattern: '',
+        udderSize: '', udderShape: '', teatCondition: '', milkVeins: '',
+        lactationStatus: '', dailyMilkYield: '', pregnancyStatus: '', pregnancyMonths: '',
+        calvingHistory: '', lastCalvingDate: '',
+        horns: '', eyes: '', teethAge: '', ears: '', muzzle: '',
+        hooves: '', legs: '', walking: '', jointSwelling: '',
+        purpose: '', breedPurity: '', sireInfo: '', damInfo: '', feedRegime: '',
+        vaccinationCard: '', vetCertificate: '', movementPermit: '',
+        brandMark: false, earTag: false,
+      });
     } catch (err) { setError(err.message); }
     finally { setSubmitting(false); }
   };
@@ -384,12 +464,42 @@ function LivestockModule({ myFarmer, myLivestock, reload }) {
 
         <LocationPicker value={form.location} onChange={loc => setForm({...form, location: loc})} required label="Where is the animal?" />
 
+        {/* Guide button */}
+        <button
+          type="button"
+          onClick={() => setShowGuide(true)}
+          style={{
+            width:'100%',padding:12,borderRadius:10,
+            border:'2px dashed #4CAF50',background:'#E8F5E9',
+            color:'#2E7D32',fontWeight:'bold',fontSize:13,
+            cursor:'pointer',marginBottom:12,
+          }}
+        >
+          📏 How do I measure weight? (Guide + Calculator)
+        </button>
+
+        {/* Physical Profile — collapsible sections */}
+        <PhysicalProfileForm
+          value={form}
+          onChange={(updated) => setForm({...form, ...updated})}
+          constants={constants}
+          animalType={form.type}
+        />
+
         <div style={{display:'flex',gap:8,marginTop:16}}>
           <button onClick={() => setView('list')} style={{...primaryBtn, background:'#F0F0F0', color:'#666', flex:1}}>← Back</button>
           <button onClick={submit} disabled={submitting || !form.breed || !form.location} style={{...primaryBtn, background: (form.breed && form.location && !submitting) ? '#FF6F00' : '#ccc', flex:2}}>
             {submitting ? '⏳ Saving...' : '✅ Register Animal'}
           </button>
         </div>
+
+        {/* GUIDE MODAL — inside form view so it shows when button is tapped */}
+        {showGuide && (
+          <MeasurementGuideModal 
+            onClose={() => setShowGuide(false)} 
+            animalType={form.type}
+          />
+        )}
       </div>
     );
   }
@@ -483,6 +593,14 @@ function LivestockModule({ myFarmer, myLivestock, reload }) {
           </div>
         );
       })}
+
+      {/* MEASUREMENT GUIDE MODAL */}
+      {showGuide && (
+        <MeasurementGuideModal 
+          onClose={() => setShowGuide(false)} 
+          animalType={form.type}
+        />
+      )}
 
       {/* DEATH MODAL */}
       {deathTarget && (

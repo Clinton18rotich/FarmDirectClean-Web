@@ -192,3 +192,10 @@ api.vet = {
   // Farmer health history
   farmerHealth: (farmerId) => request(`/api/vet/farmer/${farmerId}/health`),
 };
+
+// Physical attributes + measurement guide
+api.shamba.physicalAttributes = () => request('/api/shamba/physical-attributes');
+api.shamba.measurementGuide = (lang = 'en') => request(`/api/shamba/measurement-guide?lang=${lang}`);
+api.shamba.measurementGuideSMS = (lang = 'en') => request(`/api/shamba/measurement-guide/sms?lang=${lang}`);
+api.shamba.estimateWeight = (data) => request('/api/shamba/livestock/estimate-weight', { method: 'POST', body: data });
+api.shamba.compareBreed = (passportId) => request(`/api/shamba/livestock/${passportId}/compare-breed`);
