@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import LocationPicker from './LocationPicker';
 import PhysicalProfileForm from './PhysicalProfileForm';
 import MeasurementGuideModal from './MeasurementGuideModal';
+import LandPaymentSheet from './LandPaymentSheet';
 import { api } from '../services/api';
 import { normalizeKenyaPhone, isValidKenyaPhone } from '../utils/phone';
 
@@ -1508,6 +1509,7 @@ function LandSovereigntyModule() {
   const [myFarmer, setMyFarmer] = useState(null);
   const [parcels, setParcels] = useState([]);
   const [selectedParcel, setSelectedParcel] = useState(null);
+  const [paymentParcel, setPaymentParcel] = useState(null);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -1645,9 +1647,9 @@ function LandSovereigntyModule() {
         ...regForm,
       });
       if (!result.success) throw new Error(result.message);
-      alert('✅ Parcel registered! ID: ' + result.parcel.id);
       await loadAll();
-      setView('home');
+      // Open payment sheet — parcel will activate after KES 500
+      setPaymentParcel(result.parcel);
       setRegForm({
         county: '', subCounty: '', ward: '', village: '',
         titleDeed: '', areaHectares: '', landUse: 'Mixed farming',
@@ -1808,13 +1810,36 @@ function LandSovereigntyModule() {
               </span>
             </div>
             <p style={{fontSize:12,margin:'2px 0'}}>📍 {p.village || p.ward}, {p.county}</p>
-            <p style={{fontSize:12,margin:'2px 0'}}>📏 {p.areaHectares} hectares • {p.landUse}</p>
+            <p style={{fontSize:12,margin:'2px 0'}}>📏 {p.areaDisplay || p.areaProvisional?.display || '—'} • {p.landUse}</p>
             <p style={{fontSize:11,margin:'4px 0 0',color:'#666'}}>
               🛰️ {p.waypoints.length} GPS points • 👥 {p.confirmedWitnesses}/3 witnesses
             </p>
+            {!p.feePaid && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setPaymentParcel(p); }}
+                style={{...primaryBtn, background:'#2E7D32', padding:10, fontSize:13, marginTop:8}}
+              >
+                💳 Pay KES {p.fee || 500} to Activate
+              </button>
+            )}
             {p.landmarkHash && <p style={{fontSize:10,margin:'2px 0 0',color:'#999',fontFamily:'monospace'}}>{p.landmarkHash}</p>}
           </div>
         ))}
+
+        {paymentParcel && (
+          <LandPaymentSheet
+            parcel={paymentParcel}
+            onClose={() => setPaymentParcel(null)}
+            onPaid={() => { loadAll(); }}
+            onInviteWitnesses={() => {
+              setPaymentParcel(null);
+              setView('detail');
+              api.landProtection.getParcel(paymentParcel.id).then(r => {
+                setSelectedParcel(r.parcel);
+              });
+            }}
+          />
+        )}
       </div>
     );
   }
