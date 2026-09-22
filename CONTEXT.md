@@ -304,3 +304,49 @@ Integration stack fully verified end-to-end:
 
 Full simulated→real transition demonstrated. Production
 credentials alone are what remains for go-live.
+
+## Service Persistence Rules (learned 2026-09-22)
+
+Every persistent service MUST follow these rules:
+
+1. Use storage.objectToMap(), not `new Map()`:
+   ✅ const things = storage.objectToMap(storage.load('things', {}));
+   ❌ const things = new Map();
+
+2. Use Map methods, never brackets:
+   ✅ things.set(id, obj) / things.get(id) / things.delete(id)
+   ❌ things[id] = obj / things[id]
+
+3. Define persist() AND call it after every mutation:
+   function persist() {
+     storage.save('things', storage.mapToObject(things));
+   }
+   things.set(id, obj);
+   persist();   ← MUST call
+
+4. new Map() is ONLY for short-lived caches:
+   - activeOffers (in delivery.js)
+   - saveTimers (in storage.js)
+   - Any ephemeral, per-request state
+
+Bug class discovered:
+Object.values(Map) returns bracket-assigned properties
+(Object.fromEntries(Map)) does not — this silently split
+"read" from "write" paths, making persistence failures invisible.
+
+Files fixed this session:
+- kyc.js (earlier)
+- inheritance.js (earlier)
+- theftAlert.js (earlier)
+- escrow.js (now)
+- delivery.js (now)
+- pochi.js (now)
+
+Verification command (run periodically):
+  for f in backend/src/services/*.js backend/src/routes/*.js; do
+    if grep -q 'new Map()' "$f" 2>/dev/null; then
+      if ! grep -q 'activeOffers\|saveTimers\|cache\[' "$f" 2>/dev/null; then
+        echo "⚠️  $f has new Map()"
+      fi
+    fi
+  done
