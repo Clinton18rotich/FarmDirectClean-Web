@@ -391,6 +391,11 @@ function computeMarketValue(animal, regionalAvg) {
 function registerLivestock(data) {
   const passportId = generatePassportId(data.type);
   const now = new Date().toISOString();
+
+  // Photo required — anti-theft prevention (Session 1)
+  if (!data.photoUrl && (!data.photos || data.photos.length === 0)) {
+    return { error: 'At least one photo required to register livestock' };
+  }
   
   // If newborn, validate mother exists (if provided)
   let mother = null;
@@ -494,6 +499,23 @@ function registerLivestock(data) {
     vaccinations: [],
     treatments: [],
     // Ownership history
+    // ═══ MARKETPLACE STATE (Session 1) ═══
+    forSale: {
+      listedAt: null,
+      askingPrice: null,
+      negotiable: true,
+      listingId: null,                    // reference to market.js listing
+      status: 'none',                     // none | active | paused | sold
+      pausedAt: null,
+      pausedReason: null,
+      soldAt: null,
+      soldPrice: null,
+      soldToBuyerId: null,
+      soldToBuyerName: null,
+    },
+    frozenByTradeId: null,                // while set, animal can't be edited
+    frozenAt: null,
+
     ownershipHistory: [{
       ownerId: data.ownerId,
       ownerName: data.ownerName,
@@ -1760,6 +1782,307 @@ function getHomeSlaughterStats(filter = {}) {
   return stats;
 }
 
+
+
+// ═══════════════════════════════════════════════════════════
+// SESSION 1: MARKETPLACE — FOR SALE, OWNERSHIP TRANSFER, FROZEN
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Mark an animal as available for sale.
+ * Requires: ownership, no active theft report, alive, at least one photo.
+ */
+function markForSale(passportId, { ownerId, askingPrice, negotiable = true }) {
+  const animal = livestock.get(passportId);
+  if (!animal) return { error: 'Animal not found' };
+  if (animal.ownerId !== ownerId) return { error: 'Not the owner' };
+  if (animal.isReportedStolen) return { error: 'Reported stolen — cannot list' };
+  if (animal.status !== 'alive') return { error: 'Animal not alive' };
+  if (animal.frozenByTradeId) return { error: 'Animal is in an active trade' };
+  if (!animal.photoUrl && (!animal.photos || animal.photos.length === 0)) {
+    return { error: 'At least one photo required before listing' };
+  }
+
+  const price = Number(askingPrice);
+  if (!price || price <= 0) return { error: 'Valid asking price required' };
+
+  animal.forSale = {
+    listedAt: new Date().toISOString(),
+    askingPrice: price,
+    negotiable: negotiable !== false,
+    listingId: null,
+    status: 'active',
+    pausedAt: null,
+    pausedReason: null,
+    soldAt: null,
+    soldPrice: null,
+    soldToBuyerId: null,
+    soldToBuyerName: null,
+  };
+  persist();
+
+  console.log('🏷️  Marked for sale:', passportId, '| KES', price);
+  return { animal };
+}
+
+/**
+ * Mark an animal as sold (called from trades.js after successful trade).
+ */
+function markSold(passportId, { buyerId, buyerName, soldPrice, tradeId }) {
+  const animal = livestock.get(passportId);
+  if (!animal) return { error: 'Animal not found' };
+  if (!animal.forSale || animal.forSale.status !== 'active') {
+    return { error: 'Animal is not currently for sale' };
+  }
+
+  animal.forSale.status = 'sold';
+  animal.forSale.soldAt = new Date().toISOString();
+  animal.forSale.soldPrice = Number(soldPrice);
+  animal.forSale.soldToBuyerId = buyerId;
+  animal.forSale.soldToBuyerName = buyerName || null;
+  animal.forSale.tradeId = tradeId || null;
+
+  persist();
+  console.log('💰 Marked sold:', passportId, '→', buyerName, '| KES', soldPrice);
+  return { animal };
+}
+
+/**
+ * Withdraw an animal from sale (pause, don't clear).
+ */
+function withdrawFromSale(passportId, { ownerId, reason }) {
+  const animal = livestock.get(passportId);
+  if (!animal) return { error: 'Animal not found' };
+  if (animal.ownerId !== ownerId) return { error: 'Not the owner' };
+  if (animal.frozenByTradeId) return { error: 'Animal is in an active trade' };
+  if (!animal.forSale || animal.forSale.status !== 'active') {
+    return { error: 'Animal is not listed for sale' };
+  }
+
+  animal.forSale.status = 'paused';
+  animal.forSale.pausedAt = new Date().toISOString();
+  animal.forSale.pausedReason = reason || 'Withdrawn by owner';
+
+  persist();
+  console.log('⏸️  Withdrawn from sale:', passportId);
+  return { animal };
+}
+
+/**
+ * Transfer ownership after a successful trade.
+ * Appends to ownershipHistory; changes ownerId/OwnerName/OwnerPhone.
+ * Clears forSale status.
+ */
+function updateOwnership(passportId, { newOwnerId, newOwnerName, newOwnerPhone, soldPrice, tradeId, mpesaRef }) {
+  const animal = livestock.get(passportId);
+  if (!animal) return { error: 'Animal not found' };
+
+  const now = new Date().toISOString();
+
+  // Close the current ownership entry
+  const current = animal.ownershipHistory?.[animal.ownershipHistory.length - 1];
+  if (current && !current.to) {
+    current.to = now;
+    current.soldTo = newOwnerId;
+    current.soldPrice = soldPrice;
+    current.tradeId = tradeId;
+  }
+
+  // Append the new owner
+  animal.ownershipHistory = animal.ownershipHistory || [];
+  animal.ownershipHistory.push({
+    ownerId: newOwnerId,
+    ownerName: newOwnerName,
+    ownerPhone: newOwnerPhone,
+    from: now,
+    via: 'trade',
+    tradeId: tradeId || null,
+    mpesaRef: mpesaRef || null,
+  });
+
+  // Update current owner
+  animal.ownerId = newOwnerId;
+  animal.ownerName = newOwnerName;
+  if (newOwnerPhone) animal.ownerPhone = newOwnerPhone;
+
+  // Clear listing
+  if (animal.forSale) {
+    animal.forSale.status = 'sold';
+    animal.forSale.soldAt = now;
+    animal.forSale.soldPrice = soldPrice;
+    animal.forSale.soldToBuyerId = newOwnerId;
+    animal.forSale.soldToBuyerName = newOwnerName;
+    animal.forSale.tradeId = tradeId || null;
+  }
+
+  // Clear frozen flag
+  animal.frozenByTradeId = null;
+  animal.frozenAt = null;
+
+  persist();
+  console.log('🔄 Ownership transferred:', passportId, '→', newOwnerName);
+  return { animal };
+}
+
+/**
+ * List animals currently available for sale, filtered.
+ */
+function getSaleableLivestock(filter = {}) {
+  const out = [];
+  for (const animal of livestock.values()) {
+    if (!animal.forSale || animal.forSale.status !== 'active') continue;
+    if (animal.isReportedStolen) continue;
+    if (animal.status !== 'alive') continue;
+
+    if (filter.type && animal.type !== filter.type) continue;
+    if (filter.county && animal.location?.county !== filter.county) continue;
+    if (filter.ward && animal.location?.ward !== filter.ward) continue;
+    if (filter.minPrice && animal.forSale.askingPrice < Number(filter.minPrice)) continue;
+    if (filter.maxPrice && animal.forSale.askingPrice > Number(filter.maxPrice)) continue;
+    if (filter.breed && animal.breed !== filter.breed) continue;
+    if (filter.ownerId && animal.ownerId !== filter.ownerId) continue;
+
+    out.push(animal);
+  }
+
+  // Sort by listed date descending (newest first)
+  out.sort((a, b) => new Date(b.forSale.listedAt) - new Date(a.forSale.listedAt));
+
+  // Pagination
+  const limit = Math.min(Number(filter.limit) || 50, 200);
+  const offset = Number(filter.offset) || 0;
+  return {
+    total: out.length,
+    limit,
+    offset,
+    items: out.slice(offset, offset + limit),
+  };
+}
+
+/**
+ * Freeze an animal during an active trade (prevents listing/purchase elsewhere).
+ */
+function setFrozen(passportId, tradeId) {
+  const animal = livestock.get(passportId);
+  if (!animal) return { error: 'Animal not found' };
+  animal.frozenByTradeId = tradeId;
+  animal.frozenAt = new Date().toISOString();
+  persist();
+  return { ok: true };
+}
+
+function clearFrozen(passportId) {
+  const animal = livestock.get(passportId);
+  if (!animal) return { error: 'Animal not found' };
+  animal.frozenByTradeId = null;
+  animal.frozenAt = null;
+  persist();
+  return { ok: true };
+}
+
+// ═══════════════════════════════════════════════════════════
+// SESSION 1: LIVESTOCK PLUGIN (for trades.js orchestration)
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Update the photo gallery for an animal (up to 5).
+ * First photo becomes the primary photoUrl.
+ */
+function updatePhotos(passportId, { ownerId, photos }) {
+  const animal = livestock.get(passportId);
+  if (!animal) return { error: 'Animal not found' };
+  if (animal.ownerId !== ownerId) return { error: 'Not the owner' };
+  if (animal.frozenByTradeId) return { error: 'Animal is in an active trade' };
+  if (!Array.isArray(photos)) return { error: 'photos must be array' };
+  if (photos.length > 5) return { error: 'Maximum 5 photos' };
+
+  animal.photos = photos;
+  if (photos.length > 0 && !animal.photoUrl) {
+    animal.photoUrl = photos[0];
+  }
+  persist();
+  return { animal };
+}
+
+const livestockPlugin = {
+  name: 'livestock',
+  referenceType: 'livestock-passport',
+
+  async validateSubject({ referenceId, sellerId }) {
+    const animal = livestock.get(referenceId);
+    if (!animal) return { error: 'Animal not found' };
+    if (animal.ownerId !== sellerId) return { error: 'Not the owner' };
+    if (animal.isReportedStolen) return { error: 'Reported stolen' };
+    if (animal.status !== 'alive') return { error: 'Animal not alive' };
+    if (!animal.forSale || animal.forSale.status !== 'active') {
+      return { error: 'Not currently for sale' };
+    }
+    if (!animal.photoUrl && (!animal.photos || animal.photos.length === 0)) {
+      return { error: 'Photo required' };
+    }
+    return { ok: true, subject: animal };
+  },
+
+  buildSnapshot(animal, agreedPrice) {
+    return {
+      passportId: animal.passportId,
+      type: animal.type,
+      breed: animal.breed,
+      age: animal.age,
+      gender: animal.gender,
+      color: animal.color,
+      health: animal.health,
+      photoUrl: animal.photoUrl,
+      photos: animal.photos || [],
+      location: animal.location,
+      vaccinations: animal.vaccinations || [],
+      ownershipHistory: animal.ownershipHistory || [],
+      isReportedStolen: animal.isReportedStolen || false,
+      agreedPrice: Number(agreedPrice),
+      agreementDate: new Date().toISOString(),
+    };
+  },
+
+  async transferOwnership({ referenceId, newOwner, tradeId, mpesaRef, soldPrice }) {
+    return updateOwnership(referenceId, {
+      newOwnerId: newOwner.id,
+      newOwnerName: newOwner.name,
+      newOwnerPhone: newOwner.phone,
+      tradeId,
+      mpesaRef,
+      soldPrice,
+    });
+  },
+
+  deliveryModes(distanceKm) {
+    if (distanceKm < 15) return ['self_pickup', 'self_delivery', 'rider', 'meet_halfway'];
+    if (distanceKm < 50) return ['self_delivery', 'rider', 'farm_transport'];
+    if (distanceKm < 100) return ['rider', 'farm_transport', 'livestock_lorry', 'trekking'];
+    return ['livestock_lorry', 'trekking', 'multi_day_trek'];
+  },
+
+  async freezeForTrade({ referenceId, tradeId }) {
+    return setFrozen(referenceId, tradeId);
+  },
+
+  async unfreeze({ referenceId }) {
+    return clearFrozen(referenceId);
+  },
+
+  // Vehicle class needed to deliver this subject
+  requiredVehicleClass(subject) {
+    const value = subject.forSale?.askingPrice || 0;
+    if (value <= 2000) return 'A';
+    if (value <= 5000) return 'B';
+    if (value <= 15000) return 'C';
+    if (value <= 30000) return 'D';
+    if (value <= 100000) return 'E';
+    if (value <= 500000) return 'F';
+    return 'G';
+  },
+};
+
+
 module.exports.classifyMeatSafety = classifyMeatSafety;
 module.exports.CEREMONY_TYPES = CEREMONY_TYPES;
 module.exports.recordHomeSlaughter = recordHomeSlaughter;
@@ -1775,3 +2098,14 @@ module.exports.estimateWeight = estimateWeight;
 module.exports.computeProductionScore = computeProductionScore;
 module.exports.computeMarketValue = computeMarketValue;
 module.exports.getPhysicalAttributes = () => require('./physicalAttributes');
+// ═══ SESSION 1: MARKETPLACE EXPORTS ═══
+module.exports.markForSale = markForSale;
+module.exports.markSold = markSold;
+module.exports.withdrawFromSale = withdrawFromSale;
+module.exports.updateOwnership = updateOwnership;
+module.exports.getSaleableLivestock = getSaleableLivestock;
+module.exports.setFrozen = setFrozen;
+module.exports.updatePhotos = updatePhotos;
+module.exports.clearFrozen = clearFrozen;
+module.exports.livestockPlugin = livestockPlugin;
+

@@ -102,6 +102,10 @@ router.post('/livestock/register', (req, res) => {
 
     if (!ownerName || !ownerPhone) {
       return res.status(400).json({ success: false, message: 'Owner name and phone required' });
+
+
+
+
     }
     if (!type) return res.status(400).json({ success: false, message: 'Animal type required' });
     if (!breed) return res.status(400).json({ success: false, message: 'Breed required' });
@@ -133,6 +137,96 @@ router.post('/livestock/register', (req, res) => {
   } catch (error) {
     console.error('❌ Livestock register error:', error);
     res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════
+// SESSION 1: MARKETPLACE ROUTES
+// ═══════════════════════════════════════════════════════
+
+/**
+ * Mark an animal for sale
+ */
+router.post('/livestock/:passportId/list-for-sale', (req, res) => {
+  try {
+    const { ownerId, askingPrice, negotiable } = req.body;
+    if (!ownerId) return res.status(400).json({ success: false, message: 'ownerId required' });
+    if (!askingPrice) return res.status(400).json({ success: false, message: 'askingPrice required' });
+
+    const result = shamba.markForSale(req.params.passportId, { ownerId, askingPrice, negotiable });
+    if (result.error) return res.status(400).json({ success: false, message: result.error });
+    res.json({ success: true, animal: result.animal });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+/**
+ * Withdraw an animal from sale
+ */
+router.post('/livestock/:passportId/withdraw-sale', (req, res) => {
+  try {
+    const { ownerId, reason } = req.body;
+    if (!ownerId) return res.status(400).json({ success: false, message: 'ownerId required' });
+
+    const result = shamba.withdrawFromSale(req.params.passportId, { ownerId, reason });
+    if (result.error) return res.status(400).json({ success: false, message: result.error });
+    res.json({ success: true, animal: result.animal });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+/**
+ * List all saleable livestock (public marketplace)
+ */
+router.get('/livestock/saleable', (req, res) => {
+  try {
+    const { type, county, ward, minPrice, maxPrice, breed, ownerId, limit, offset } = req.query;
+    const result = shamba.getSaleableLivestock({
+      type, county, ward, minPrice, maxPrice, breed, ownerId, limit, offset,
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+/**
+ * Update photos for an animal (up to 5)
+ */
+
+/**
+ * Manually update ownership (admin/testing only).
+ * In production, trades.js calls the service directly.
+ */
+router.post('/livestock/:passportId/update-ownership', (req, res) => {
+  try {
+    const { newOwnerId, newOwnerName, newOwnerPhone, soldPrice, tradeId, mpesaRef } = req.body;
+    if (!newOwnerId || !newOwnerName) {
+      return res.status(400).json({ success: false, message: 'newOwnerId and newOwnerName required' });
+    }
+    const result = shamba.updateOwnership(req.params.passportId, {
+      newOwnerId, newOwnerName, newOwnerPhone, soldPrice, tradeId, mpesaRef,
+    });
+    if (result.error) return res.status(400).json({ success: false, message: result.error });
+    res.json({ success: true, animal: result.animal });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+router.post('/livestock/:passportId/photos', (req, res) => {
+  try {
+    const { ownerId, photos } = req.body;
+    if (!ownerId) return res.status(400).json({ success: false, message: 'ownerId required' });
+    if (!Array.isArray(photos)) return res.status(400).json({ success: false, message: 'photos must be array' });
+
+    const result = shamba.updatePhotos(req.params.passportId, { ownerId, photos });
+    if (result.error) return res.status(400).json({ success: false, message: result.error });
+    res.json({ success: true, animal: result.animal });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
   }
 });
 

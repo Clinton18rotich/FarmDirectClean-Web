@@ -34,3 +34,5 @@ dist-ssr
 backend/.env.*
 .cf-tunnel.log
 start-tunnel.sh
+*.broken
+*.pre-marketplace
