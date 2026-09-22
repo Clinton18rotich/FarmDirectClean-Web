@@ -47,4 +47,10 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`   Environment: ${process.env.NODE_ENV}`);
   // Preload location data
   require('./services/location')._load();
+  // Start payment reconciliation cron (no-op in simulated mode)
+  try {
+    require('./services/reconciliation').start();
+  } catch (err) {
+    console.error('⚠️  Reconciliation cron failed to start:', err.message);
+  }
 });

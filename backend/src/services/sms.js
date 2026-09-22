@@ -2,6 +2,10 @@ const storage = require('./storage');
 
 const AT_API_KEY = process.env.AFRICASTALKING_API_KEY;
 const AT_USERNAME = process.env.AFRICASTALKING_USERNAME || 'sandbox';
+const AT_ENV = process.env.AFRICASTALKING_ENV || 'sandbox';
+const AT_BASE = AT_ENV === 'production'
+  ? 'https://api.africastalking.com'
+  : 'https://api.sandbox.africastalking.com';
 const AT_ENABLED = !!(AT_API_KEY && AT_USERNAME);
 
 // Load SMS log from disk, keep last 200
@@ -37,7 +41,7 @@ async function sendSms(to, message, options = {}) {
 
   if (AT_ENABLED) {
     try {
-      const response = await fetch('https://api.africastalking.com/version1/messaging', {
+      const response = await fetch(`${AT_BASE}/version1/messaging`, {
         method: 'POST',
         headers: {
           'apiKey': AT_API_KEY,

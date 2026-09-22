@@ -114,7 +114,39 @@ router.get('/sms-log', (req, res) => {
  * Safaricom Daraja STK callback
  * Routes payment results to the KYC service
  */
-router.post('/mpesa', (req, res) => {
+// ═══════════════════════════════════════════════════════
+// SAFARICOM IP WHITELIST (production only)
+// ═══════════════════════════════════════════════════════
+
+// Official Safaricom M-Pesa API source ranges (partial list, expand from docs)
+const SAFARICOM_IPS = [
+  '196.201.214.200', '196.201.214.206', '196.201.214.207', '196.201.214.208',
+  '196.201.214.209', '196.201.213.114', '196.201.213.44',
+];
+
+function isSafaricomIP(ip) {
+  const clean = String(ip || '').replace('::ffff:', '');
+  return SAFARICOM_IPS.includes(clean);
+}
+
+function requireSafaricomIP(req, res, next) {
+  // Allow bypass in dev so local curl tests work
+  if (process.env.NODE_ENV !== 'production' && process.env.MPESA_ENV !== 'production') {
+    return next();
+  }
+  if (!isSafaricomIP(req.ip)) {
+    console.warn('🚫 Blocked non-Safaricom IP hitting /mpesa:', req.ip);
+    return res.status(403).json({ ResultCode: 1, ResultDesc: 'Forbidden' });
+  }
+  next();
+}
+
+/**
+ * POST /api/webhook/mpesa
+ * Safaricom Daraja STK callback
+ * Routes payment results to the KYC + Land services
+ */
+router.post('/mpesa', requireSafaricomIP, (req, res) => {
   // Respond 200 immediately — Safaricom retries on timeout
   res.json({ ResultCode: 0, ResultDesc: 'OK' });
 

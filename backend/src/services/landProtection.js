@@ -1103,6 +1103,34 @@ async function confirmParcelPayment(checkoutRequestId, callbackData) {
   return { record: parcel };
 }
 
+/**
+ * List parcels stuck in awaiting_payment, plus premium upgrades pending.
+ * Used by the reconciliation cron to recover lost callbacks.
+ *
+ * For premium upgrades: parcel already has tier !== 'premium' but a
+ * premiumCheckoutRequestId is set — return a copy with checkoutRequestId
+ * pointing to the premium STK so the cron matches the right record.
+ */
+function listAwaitingPayment() {
+  const out = [];
+  for (const parcel of parcels.values()) {
+    // Case 1 — basic fee unpaid
+    if (parcel.status === 'awaiting_payment' && parcel.checkoutRequestId) {
+      out.push(parcel);
+    }
+    // Case 2 — premium upgrade pending (parcel already draft, tier still basic)
+    if (
+      parcel.premiumCheckoutRequestId &&
+      parcel.premiumStkInitiatedAt &&
+      parcel.tier !== 'premium'
+    ) {
+      out.push({ ...parcel, checkoutRequestId: parcel.premiumCheckoutRequestId });
+    }
+  }
+  return out;
+}
+
 module.exports.initiateParcelPayment = initiateParcelPayment;
 module.exports.initiatePremiumUpgrade = initiatePremiumUpgrade;
 module.exports.confirmParcelPayment = confirmParcelPayment;
+module.exports.listAwaitingPayment = listAwaitingPayment;

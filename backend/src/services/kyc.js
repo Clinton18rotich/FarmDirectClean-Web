@@ -599,5 +599,20 @@ async function confirmPaymentFromCallback(checkoutRequestId, callbackData) {
   return await runVerification(record.id);
 }
 
+/**
+ * List KYC verifications stuck in awaiting_payment.
+ * Used by the reconciliation cron to recover lost callbacks.
+ */
+function listAwaitingPayment() {
+  const out = [];
+  for (const v of Object.values(verifications)) {
+    if (v.status === 'awaiting_payment' && v.checkoutRequestId) {
+      out.push(v);
+    }
+  }
+  return out;
+}
+
 module.exports.initiateKYCPayment = initiateKYCPayment;
 module.exports.confirmPaymentFromCallback = confirmPaymentFromCallback;
+module.exports.listAwaitingPayment = listAwaitingPayment;
