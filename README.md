@@ -1,16 +1,412 @@
-# React + Vite
+# FarmDirect
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+> Digital infrastructure for Kenyan agriculture — trust, verification, and trade for livestock, land, and produce.
 
-Currently, two official plugins are available:
+**Repo:** github.com/Clinton18rotich/FarmDirectClean-Web
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+---
 
-## React Compiler
+## What FarmDirect Does
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+FarmDirect is a **trust + trade platform** for Kenyan agriculture with three integrated layers:
 
-## Expanding the Oxlint configuration
+1. **Verification** — KYC, land registration, livestock passports
+2. **Marketplace** — listings, offers, contact unlock
+3. **Trade orchestration** — escrow-funded trade lifecycle with buyer release code
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+The **animal passport** is the anchor. Every trade references a registered, photo-verified livestock passport.
+
+---
+
+## Core Architecture
+
+```
+
+┌────────────────────────────────────────────────────────┐
+│                   VERTICALS (plugins)                  │
+│  🐄 livestock · 🌾 crops · 🥩 meat · 🌱 inputs        │
+└──────────────────────┬─────────────────────────────────┘
+│
+┌──────────────────────▼─────────────────────────────────┐
+│              TRADES (orchestrator)                     │
+│  lifecycle · escrow · delivery · release code          │
+└──────────────────────┬─────────────────────────────────┘
+│
+┌──────────────────────▼─────────────────────────────────┐
+│              SERVICES (shared infrastructure)          │
+│                                                        │
+│  shamba ......... livestock passports                  │
+│  market ......... listings + offers + unlocks          │
+│  riders ......... delivery partner classes A-G         │
+│  trades ......... lifecycle orchestration              │
+│  econfirm ....... external escrow provider             │
+│  mpesa .......... STK push + B2C                       │
+│  kyc ............ seller verification                  │
+│  landProtection . GPS boundaries + title vault         │
+│  inheritance .... parent-declared land plans           │
+│  delivery ....... rider assignment + tracking          │
+│  vehicleClasses . capacity/insurance tiers             │
+│  reconciliation . payment recovery cron                │
+└────────────────────────────────────────────────────────┘
+
+```
+
+---
+
+## The Complete User Flow
+
+### Seller's journey
+
+```
+
+1. Register as farmer (basic)
+2. Verify identity — KES 500 KYC
+3. Register livestock — photo REQUIRED (anti-theft)
+4. Mark for sale — set asking price
+5. Receive offers from buyers
+6. Counter / accept — negotiation
+7. Fund delivery — rider selected, dispatched
+8. Ownership transfers on buyer release
+9. Get paid via escrow → M-Pesa
+10. Rate buyer
+
+```
+
+### Buyer's journey
+
+```
+
+1. Browse marketplace listings
+2. Tap listing — sees passport + live animal data
+3. Pay KES 100 to unlock seller contact
+4. Make offer — KES 45,000 for the cow
+5. Negotiate — counter-offer from seller
+6. Accept — trade created, listing locked
+7. Fund escrow — STK for goods value
+8. Negotiate delivery with rider directly
+9. Receive animal — inspect
+10. Enter 4-digit release code
+11. Pay rider directly (M-Pesa)
+12. Escrow releases to seller
+13. Rate seller + rider
+
+```
+
+### Rider's journey
+
+```
+
+1. Register free — no upfront fee
+2. Submit KYC — ID + selfie
+3. Get assigned vehicle class (A-G based on vehicle)
+4. Go online when available
+5. Receive delivery offers matching class
+6. Accept + call buyer — negotiate fee
+7. Pick up + deliver
+8. Get paid directly by buyer
+9. Build reputation
+10. Auto-promote tier (new → established → trusted)
+
+```
+
+---
+
+## Money Flow (no-splits model)
+
+```
+
+Buyer pays:
+• KES 100    → FarmDirect paybill (contact unlock = platform fee)
+• KES 45,000 → eConfirm escrow (goods value)
+• KES 500+   → rider DIRECTLY (negotiated fee, at handoff)
+
+eConfirm releases:
+• KES 45,000 → seller's M-Pesa (minus ~1% eConfirm fee)
+
+FarmDirect keeps:
+• KES 100 (already collected at unlock, credited to trade)
+
+Zero PSP license required — FarmDirect never holds client funds.
+
+```
+
+---
+
+## Vehicle Classes (delivery tiers)
+
+| Class | Vehicles | Max Value | Insurance |
+|-------|----------|-----------|-----------|
+| A | Bicycle, hand cart | KES 2,000 | Not required |
+| B | Motorcycle (boda) | KES 5,000 | Not required |
+| C | Tuk Tuk | KES 15,000 | Self-declared |
+| D | Probox, small pickup | KES 30,000 | Self-declared |
+| E | Pickup, small lorry | KES 100,000 | Certificate required |
+| F | Canter, Fuso | KES 500,000 | Certificate required |
+| G | Trailer, ferry | Unlimited | Certificate required |
+
+**Jobs are only offered to riders whose class can handle the value.**
+
+---
+
+## Services Inventory
+
+| Service | Lines | Purpose |
+|---------|-------|---------|
+| trades.js | ~820 | Trade lifecycle orchestrator |
+| market.js | ~807 | Listings + offers + contact unlocks |
+| shamba.js | ~1,800 | Livestock passports + land + slaughterhouses |
+| riders.js | ~500 | Rider registration + matching |
+| vehicleClasses.js | ~100 | Capacity tiers A-G |
+| kyc.js | ~618 | Identity verification |
+| landProtection.js | ~1,140 | GPS boundaries + inheritance |
+| inheritance.js | ~393 | Parent-declared plans |
+| delivery.js | ~224 | Rider dispatch + tracking |
+| econfirm.js | ~57 | Escrow provider client |
+| mpesa.js | ~228 | M-Pesa STK + B2C |
+| reconciliation.js | ~230 | Payment recovery |
+| pricing.js | ~232 | Fee calculations |
+| revenue.js | ~95 | Revenue tracking |
+
+---
+
+## API Surface
+
+```
+
+POST   /api/shamba/livestock/register
+POST   /api/shamba/livestock/:id/list-for-sale
+GET    /api/shamba/livestock/saleable
+
+POST   /api/market/listings
+GET    /api/market/listings?county=Bomet
+POST   /api/market/listings/:id/unlock
+POST   /api/market/offers
+POST   /api/market/offers/:id/accept
+
+POST   /api/rider/register
+POST   /api/rider/:id/kyc/submit
+POST   /api/rider/:id/online
+POST   /api/rider/match
+
+POST   /api/trades/create
+POST   /api/trades/:id/fund
+POST   /api/trades/:id/release
+GET    /api/trades/:id
+GET    /api/trades/user/:userId
+
+POST   /api/kyc/request
+POST   /api/kyc/:id/pay
+POST   /api/land-protection/parcels/register
+POST   /api/land-protection/parcels/:id/pay
+
+POST   /api/webhook/mpesa      (Safaricom callback)
+POST   /api/webhook/sms        (Africa's Talking inbound)
+
+```
+
+---
+
+## Environment
+
+```bash
+# Core
+PORT=3001
+NODE_ENV=development
+
+# M-Pesa (Safaricom Daraja)
+MPESA_ENV=sandbox
+BASE_URL=https://sandbox.safaricom.co.ke
+CONSUMER_KEY=<from Daraja>
+CONSUMER_SECRET=<from Daraja>
+SHORT_CODE=174379
+PASSKEY=bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919
+CALLBACK_URL=https://<tunnel>.trycloudflare.com/api/webhook/mpesa
+
+# eConfirm escrow
+ECONFIRM_BASE_URL=https://econfirm.co.ke/api/v1
+ECONFIRM_API_KEY=<from econfirm.co.ke/api>
+
+# SMS (Africa's Talking)
+AFRICASTALKING_ENV=sandbox
+AFRICASTALKING_USERNAME=sandbox
+AFRICASTALKING_API_KEY=
+
+# KYC
+KYC_PROVIDER=mock
+DIDIT_API_KEY=
+```
+
+---
+
+Development Setup (Termux on Android)
+
+```bash
+# One-time setup
+pkg install nodejs git cloudflared
+
+# Daily launch — 3 Termux sessions
+
+# Session 1 — public tunnel
+cd ~/FarmDirectClean-Web/backend
+./start-tunnel.sh
+
+# Session 2 — backend
+cd ~/FarmDirectClean-Web/backend
+node src/server.js
+
+# Session 3 — frontend
+cd ~/FarmDirectClean-Web
+npm run dev
+```
+
+Aliases (add to ~/.bashrc)
+
+```bash
+alias tn="cd ~/FarmDirectClean-Web"
+alias tb="cd ~/FarmDirectClean-Web/backend"
+alias tunnel="cd ~/FarmDirectClean-Web/backend && ./start-tunnel.sh"
+alias serve="cd ~/FarmDirectClean-Web/backend && node src/server.js"
+alias fr="pkill -9 -f 'node src/server.js'; sleep 1; cd ~/FarmDirectClean-Web/backend && node src/server.js"
+set +H
+```
+
+---
+
+Testing the Full Lifecycle
+
+```bash
+# 1. Seller registers + lists
+curl -X POST localhost:3001/api/shamba/livestock/register \
+  -H "Content-Type: application/json" \
+  -d '{"ownerId":"SELLER-1","ownerName":"Test","ownerPhone":"0700000001","type":"Cow","breed":"Friesian","location":{"county":"Bomet"},"photoUrl":"data:..."}'
+
+curl -X POST localhost:3001/api/shamba/livestock/KE-COW-XXX/list-for-sale \
+  -H "Content-Type: application/json" \
+  -d '{"ownerId":"SELLER-1","askingPrice":45000}'
+
+# 2. Market listing
+curl -X POST localhost:3001/api/market/listings \
+  -H "Content-Type: application/json" \
+  -d '{"passportId":"KE-COW-XXX","sellerId":"SELLER-1"}'
+
+# 3. Buyer unlocks contact
+curl -X POST localhost:3001/api/market/listings/LIST-XXX/unlock \
+  -H "Content-Type: application/json" \
+  -d '{"buyerId":"BUYER-1","buyerPhone":"254708374149"}'
+
+# 4. Buyer makes offer
+curl -X POST localhost:3001/api/market/offers \
+  -H "Content-Type: application/json" \
+  -d '{"listingId":"LIST-XXX","buyerId":"BUYER-1","amount":42000}'
+
+# 5. Seller accepts
+curl -X POST localhost:3001/api/market/offers/OFFER-XXX/accept \
+  -H "Content-Type: application/json" \
+  -d '{"by":"SELLER-1"}'
+
+# 6. Create trade
+curl -X POST localhost:3001/api/trades/create \
+  -H "Content-Type: application/json" \
+  -d '{"offerId":"OFFER-XXX","creatorId":"BUYER-1"}'
+
+# 7. Fund trade
+curl -X POST localhost:3001/api/trades/TRADE-XXX/fund
+
+# 8. Rider accepts
+curl -X POST localhost:3001/api/trades/TRADE-XXX/rider-accepted \
+  -H "Content-Type: application/json" \
+  -d '{"riderId":"RDR-1","riderName":"John"}'
+
+# 9. Delivery complete
+curl -X POST localhost:3001/api/trades/TRADE-XXX/delivery-complete
+
+# 10. Release with code
+curl -X POST localhost:3001/api/trades/TRADE-XXX/release \
+  -H "Content-Type: application/json" \
+  -d '{"code":"1234","buyerId":"BUYER-1","riderPaymentRef":"MPESA-REF"}'
+```
+
+---
+
+The Four Build Sessions
+
+Session 1 — Livestock Marketplace Primitives
+
+· photos[] field, photoUrl required on register
+· forSale state machine (none → active → paused → sold)
+· markForSale(), markSold(), withdrawFromSale()
+· updateOwnership() with history append
+· frozenByTradeId lock during active trades
+· getSaleableLivestock() search
+· livestockPlugin interface
+
+Session 2 — Rider Classes & Availability
+
+· Vehicle classes A-G with value caps + insurance
+· Free rider onboarding (no upfront fee)
+· KYC submission + admin approval
+· Availability calendar + online toggle
+· Reliability scoring (0-100)
+· Tier auto-promotion
+· getEligibleRiders() for delivery matching
+
+Session 3 — Market Layer
+
+· Listings (reference shamba passports)
+· Offers with turn-based negotiation
+· Contact unlock (KES 100) via STK
+· Webhook routing for unlocks
+· Reconciliation for stuck unlocks
+· Force-confirm dev route (production-gated)
+· 21 frontend API methods
+
+Session 4 — Trade Orchestration
+
+· trades.js — full lifecycle orchestrator
+· Create from accepted offer → escrow → delivery
+· Sequential rider matching with escalation
+· 4-digit buyer release code
+· Ownership transfer on completion
+· Dispute handling
+· Deprecated legacy escrow route
+
+---
+
+What's Next
+
+· Session 5 — Frontend integration (Checkout rebuild, trade tracking, release code UI)
+· Production — Company registration → Paybill → Daraja production
+· eConfirm — Reply pending on splits capability
+· Future verticals — Crops, meat, inputs (same plugin pattern)
+
+---
+
+Production Priorities
+
+1. Company registration (3-4 weeks offline)
+2. Paybill application (Safaricom)
+3. eConfirm — confirm API access
+4. Didit — sign up for KYC (500 free/month)
+5. Africa's Talking — sign up for SMS
+6. Flip .env to production
+
+---
+
+Status
+
+Component Status
+Backend services ✅ Complete
+Backend routes ✅ Complete
+Webhook integration ✅ Complete
+M-Pesa integration ✅ Verified vs Safaricom sandbox
+Escrow integration ⚠️ Waiting on eConfirm API access
+Frontend (KYC + land) ✅ Complete
+Frontend (market + trades) ⚠️ Session 5
+
+---
+
+Built by Clinton Rotich in Termux on Android.
+
+Every backend service tested. Every state transition verified. Every bug documented.
+
+The economy works.
