@@ -51,6 +51,49 @@ router.post('/sms', async (req, res) => {
       return res.json({ success: true, type: 'help' });
     }
 
+    // ═══ INHERITANCE COMMAND HANDLER ═══
+    // CONFIRM <CODE>          — beneficiary or elder confirms
+    // DISPUTE <CODE> [reason] — beneficiary disputes
+    // OBJECT  <CODE> [reason] — elder refuses
+    if (['CONFIRM', 'DISPUTE', 'OBJECT'].includes(response)) {
+      const code = parts[1];
+      const rest = parts.slice(2).join(' ').trim();
+
+      if (!code) {
+        await sms.sendSms(from, 'FarmDirect: Please include the code from your invitation SMS.\nExample: CONFIRM ABC123');
+        return res.json({ success: true, message: 'Missing code' });
+      }
+
+      try {
+        const inheritance = require('../services/inheritance');
+        const result = inheritance.handleSmsReply(from, response, code, rest);
+
+        if (result.error) {
+          await sms.sendSms(from, 'FarmDirect: ' + result.error + '\nCheck the code and try again.');
+          return res.json({ success: false, message: result.error });
+        }
+
+        // Build confirmation reply
+        let reply;
+        if (response === 'CONFIRM') {
+          reply = result.planStatus === 'activated'
+            ? 'FarmDirect: Thank you. All parties have confirmed — the inheritance plan is now ACTIVE.'
+            : 'FarmDirect: Thank you. Your confirmation is recorded.';
+        } else if (response === 'DISPUTE') {
+          reply = 'FarmDirect: Your dispute is recorded. The inheritance plan is now on hold pending family resolution.';
+        } else if (response === 'OBJECT') {
+          reply = 'FarmDirect: Your objection is recorded. The parent will be notified.';
+        }
+
+        await sms.sendSms(from, reply);
+        console.log('🏠 Inheritance SMS:', response, code, '| from', from);
+        return res.json({ success: true, type: 'inheritance', result });
+      } catch (err) {
+        console.error('❌ Inheritance SMS handler error:', err.message);
+        return res.json({ success: false, message: err.message });
+      }
+    }
+
     if (!['YES', 'NO', 'ACCEPT', 'DECLINE'].includes(response)) {
       // Unknown command
       await sms.sendSms(from, 'FarmDirect: Reply YES or NO to delivery offer.');

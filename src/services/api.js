@@ -219,6 +219,14 @@ api.landProtection = {
   upgradeParcel: (id, phone) => request(`/api/land-protection/parcels/${id}/upgrade`, { method: 'POST', body: { phone } }),
   parcelStatus: (id) => request(`/api/land-protection/parcels/${id}/status`),
 
+  // Inheritance plan (free service)
+  declareInheritance: (id, data) => request(`/api/land-protection/parcels/${id}/inheritance/declare`, { method: 'POST', body: data }),
+  getInheritance: (id) => request(`/api/land-protection/parcels/${id}/inheritance`),
+  withdrawInheritance: (id, parentPhone) => request(`/api/land-protection/parcels/${id}/inheritance/withdraw`, { method: 'POST', body: { parentPhone } }),
+  confirmBeneficiary: (id, code) => request(`/api/land-protection/inheritance/beneficiary/${id}/confirm`, { method: 'POST', body: { code } }),
+  disputeBeneficiary: (id, code, reason) => request(`/api/land-protection/inheritance/beneficiary/${id}/dispute`, { method: 'POST', body: { code, reason } }),
+  confirmElder: (id, code) => request(`/api/land-protection/inheritance/elder/${id}/confirm`, { method: 'POST', body: { code } }),
+
   // Title deed vault
   uploadTitleDeed: (id, data) => request(`/api/land-protection/parcels/${id}/title-deed`, { method: 'POST', body: data }),
   getTitleDeed: (id) => request(`/api/land-protection/parcels/${id}/title-deed`),

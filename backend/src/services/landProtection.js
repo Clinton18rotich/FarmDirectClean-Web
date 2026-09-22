@@ -65,6 +65,10 @@ function registerParcel(data) {
     areaDeed: data.areaHectares ? parseFloat(data.areaHectares) : null,
     boundaryFrozenAt: null,
     boundaryFrozenHash: null,
+
+    // Inheritance plan (populated by services/inheritance.js)
+    inheritancePlanId: null,
+    inheritanceStatus: null,
     landUse: data.landUse || 'Mixed farming',
     description: data.description || '',
 

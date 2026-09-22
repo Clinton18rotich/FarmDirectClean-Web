@@ -204,6 +204,95 @@ router.get('/parcels/:id/status', (req, res) => {
   });
 });
 
+
+// ═══════════════════════════════════════════════════
+// G8: INHERITANCE PLAN (parent declares, children confirm)
+// ═══════════════════════════════════════════════════
+
+const inheritance = require('../services/inheritance');
+
+/**
+ * Declare an inheritance plan for a parcel.
+ * Only the parcel owner can declare.
+ */
+router.post('/parcels/:id/inheritance/declare', (req, res) => {
+  try {
+    const parcel = landProtection.getParcel(req.params.id);
+    if (!parcel) return res.status(404).json({ success: false, message: 'Parcel not found' });
+
+    const result = inheritance.declarePlan(req.params.id, parcel, req.body);
+    if (result.error) return res.status(400).json({ success: false, message: result.error });
+
+    // Sync cache on parcel
+    parcel.inheritancePlanId = result.plan.parcelId;
+    parcel.inheritanceStatus = result.plan.status;
+
+    res.json({ success: true, plan: result.plan });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * Get the inheritance plan for a parcel.
+ */
+router.get('/parcels/:id/inheritance', (req, res) => {
+  const plan = inheritance.getPlan(req.params.id);
+  if (!plan) return res.status(404).json({ success: false, message: 'No inheritance plan' });
+  res.json({ success: true, plan });
+});
+
+/**
+ * Parent withdraws the plan (only before activation).
+ */
+router.post('/parcels/:id/inheritance/withdraw', (req, res) => {
+  try {
+    const { parentPhone } = req.body;
+    if (!parentPhone) return res.status(400).json({ success: false, message: 'parentPhone required' });
+
+    const result = inheritance.withdrawPlan(req.params.id, parentPhone);
+    if (result.error) return res.status(400).json({ success: false, message: result.error });
+
+    res.json({ success: true, plan: result.plan });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * Beneficiary confirms via app (SMS uses webhook.js).
+ */
+router.post('/inheritance/beneficiary/:id/confirm', (req, res) => {
+  const { code } = req.body;
+  if (!code) return res.status(400).json({ success: false, message: 'code required' });
+  const result = inheritance.confirmBeneficiary(req.params.id, code);
+  if (result.error) return res.status(400).json({ success: false, message: result.error });
+  res.json({ success: true, ...result });
+});
+
+/**
+ * Beneficiary disputes via app.
+ */
+router.post('/inheritance/beneficiary/:id/dispute', (req, res) => {
+  const { code, reason } = req.body;
+  if (!code) return res.status(400).json({ success: false, message: 'code required' });
+  const result = inheritance.disputeBeneficiary(req.params.id, code, reason);
+  if (result.error) return res.status(400).json({ success: false, message: result.error });
+  res.json({ success: true, ...result });
+});
+
+/**
+ * Elder confirms witness via app.
+ */
+router.post('/inheritance/elder/:id/confirm', (req, res) => {
+  const { code } = req.body;
+  if (!code) return res.status(400).json({ success: false, message: 'code required' });
+  const result = inheritance.confirmElder(req.params.id, code);
+  if (result.error) return res.status(400).json({ success: false, message: result.error });
+  res.json({ success: true, ...result });
+});
+
+
 module.exports = router;
 
 
