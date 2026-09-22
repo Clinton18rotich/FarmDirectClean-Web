@@ -249,6 +249,22 @@ router.post('/mpesa', requireSafaricomIP, (req, res) => {
     console.error('❌ Land callback route error:', err.message);
   }
 
+  // Route to Market service (contact unlock fees — KES 100)
+  try {
+    const market = require('../services/market');
+    market.confirmUnlockPayment(parsed.checkoutRequestId, parsed)
+      .then(r => {
+        if (r?.error) {
+          console.warn('ℹ️  Market callback (may be non-market txn):', r.error);
+        } else if (r?.unlock) {
+          console.log('✅ Contact unlock confirmed:', r.unlock.id);
+        }
+      })
+      .catch(err => console.error('❌ Market callback error:', err.message));
+  } catch (err) {
+    console.error('❌ Market callback route error:', err.message);
+  }
+
   // NOTE: Order escrow is handled entirely by eConfirm (see services/econfirm.js).
   // The two money flows do not intersect.
 });

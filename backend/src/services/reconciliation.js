@@ -126,6 +126,52 @@ async function reconcileLand() {
   }
 }
 
+async function reconcileMarket() {
+  let market;
+  try {
+    market = require('./market');
+  } catch (e) { return; }
+
+  const records = market.listAwaitingPayment ? market.listAwaitingPayment() : [];
+  const now = Date.now();
+
+  for (const record of records) {
+    const startedAt = new Date(record.stkInitiatedAt || record.createdAt).getTime();
+    const age = now - startedAt;
+
+    if (age < STUCK_AFTER_MS) continue;
+    if (age > MAX_AGE_MS) continue;
+
+    try {
+      const status = await mpesa.queryStkStatus(record.checkoutRequestId);
+      const code = Number(status.ResultCode);
+
+      if (code === 0) {
+        const parsed = {
+          checkoutRequestId: record.checkoutRequestId,
+          success: true,
+          amount: Number(status.Amount) || record.amount,
+          mpesaReceipt: status.MpesaReceiptNumber || 'RECONCILED-' + Date.now(),
+          resultDesc: status.ResultDesc,
+          resultCode: 0,
+        };
+        market.confirmUnlockPayment(record.checkoutRequestId, parsed);
+        console.log(`✅ Reconciled unlock ${record.id} → active`);
+      } else if (code === 1032 || code === 1037 || code === 2001) {
+        market.confirmUnlockPayment(record.checkoutRequestId, {
+          checkoutRequestId: record.checkoutRequestId,
+          success: false,
+          resultCode: code,
+          resultDesc: status.ResultDesc,
+        });
+        console.log(`❌ Unlock ${record.id} failed per Safaricom`);
+      }
+    } catch (err) {
+      console.warn(`⚠️  Unlock reconcile failed for ${record.id}:`, err.message);
+    }
+  }
+}
+
 async function runReconciliation() {
   if (running) return;                 // avoid overlapping runs
   if (!mpesa.isConfigured()) return;   // simulated mode, nothing to reconcile
@@ -134,6 +180,7 @@ async function runReconciliation() {
   try {
     await reconcileKyc();
     await reconcileLand();
+    await reconcileMarket();
   } catch (err) {
     console.error('❌ Reconciliation error:', err.message);
   } finally {

@@ -298,3 +298,38 @@ api.kyc = {
     return request(`/api/kyc/list${params ? '?' + params : ''}`);
   },
 };
+
+
+// Market (Module G + Livestock)
+api.market = {
+  // Listings
+  createListing: (data) => request('/api/market/listings', { method: 'POST', body: data }),
+  searchListings: (filters = {}) => {
+    const params = new URLSearchParams(filters).toString();
+    return request(`/api/market/listings${params ? '?' + params : ''}`);
+  },
+  getListing: (id, buyerId) => request(`/api/market/listings/${id}${buyerId ? '?buyerId=' + encodeURIComponent(buyerId) : ''}`),
+  pauseListing: (id, data) => request(`/api/market/listings/${id}/pause`, { method: 'POST', body: data }),
+  resumeListing: (id, data) => request(`/api/market/listings/${id}/resume`, { method: 'POST', body: data }),
+  sellerListings: (sellerId) => request(`/api/market/seller/${sellerId}/listings`),
+
+  // Contact unlock (KES 100)
+  unlockContact: (id, data) => request(`/api/market/listings/${id}/unlock`, { method: 'POST', body: data }),
+  unlockStatus: (id, buyerId) => request(`/api/market/listings/${id}/unlock-status?buyerId=${encodeURIComponent(buyerId)}`),
+  buyerUnlocks: (buyerId) => request(`/api/market/buyer/${buyerId}/unlocks`),
+
+  // Offers
+  createOffer: (data) => request('/api/market/offers', { method: 'POST', body: data }),
+  counterOffer: (id, data) => request(`/api/market/offers/${id}/counter`, { method: 'POST', body: data }),
+  acceptOffer: (id, data) => request(`/api/market/offers/${id}/accept`, { method: 'POST', body: data }),
+  rejectOffer: (id, data) => request(`/api/market/offers/${id}/reject`, { method: 'POST', body: data }),
+  withdrawOffer: (id, data) => request(`/api/market/offers/${id}/withdraw`, { method: 'POST', body: data }),
+  getOffer: (id) => request(`/api/market/offers/${id}`),
+  listingOffers: (id) => request(`/api/market/listings/${id}/offers`),
+  buyerOffers: (buyerId) => request(`/api/market/buyer/${buyerId}/offers`),
+  sellerOffers: (sellerId) => request(`/api/market/seller/${sellerId}/offers`),
+
+  // Stats
+  stats: () => request('/api/market/stats'),
+  config: () => request('/api/market/config'),
+};
