@@ -1,7 +1,12 @@
 const express = require('express');
 const router = express.Router();
+const storage = require('../services/storage');
 
-const pochiPayments = new Map();
+const pochiPayments = storage.objectToMap(storage.load('pochi_payments', {}));
+
+function persist() {
+  storage.save('pochi_payments', storage.mapToObject(pochiPayments));
+}
 
 router.post('/record', (req, res) => {
   const { orderId, sellerPhone, amount, mpesaCode, buyerPhone } = req.body;
@@ -21,6 +26,7 @@ router.post('/record', (req, res) => {
   };
   
   pochiPayments.set(orderId, payment);
+  persist();
   console.log('📱 Pochi payment recorded:', orderId, mpesaCode, 'KES', amount);
   
   res.json({ success: true, orderId, payment });

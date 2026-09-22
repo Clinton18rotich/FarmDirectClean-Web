@@ -70,6 +70,7 @@ function createDelivery(data) {
   };
 
   deliveries.set(id, delivery);
+  persist();
   console.log('📦 Delivery created:', id, '|', pickupLabel(data.pickup), '→', pickupLabel(data.dropoff));
   return delivery;
 }
@@ -115,6 +116,7 @@ function updateStatus(id, status, note) {
   if (status === STATUS.COMPLETED) delivery.completedAt = new Date().toISOString();
   console.log('📦 Delivery', id, '→', status, note ? '(' + note + ')' : '');
   return delivery;
+  persist();
 }
 
 /**

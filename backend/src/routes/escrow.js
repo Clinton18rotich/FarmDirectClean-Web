@@ -1,9 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const econfirm = require('../services/econfirm');
+const storage = require('../services/storage');
 const revenue = require('../services/revenue');
 
-const escrows = new Map();
+const escrows = storage.objectToMap(storage.load('escrows', {}));
+
+function persist() {
+  storage.save('escrows', storage.mapToObject(escrows));
+}
 
 router.get('/health', (req, res) => {
   res.json({
@@ -41,6 +46,7 @@ router.post('/create', async (req, res) => {
       createdAt: new Date().toISOString()
     };
     escrows.set(result.providerId, escrowRecord);
+    persist();
 
     revenue.logRevenue({
       orderId: orderId || ('ORD-' + Date.now().toString(36).toUpperCase()),
