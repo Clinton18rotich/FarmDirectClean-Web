@@ -261,3 +261,29 @@ To go live: sign up at didit.me, set KYC_PROVIDER=didit, DIDIT_API_KEY=xxx
 - 4c42612 — Backend: KYC + Payment Gating + Seller Tiers
 - 1735b3d — Frontend: Module G Land Sovereignty
 - 7e51515 — Update context with KYC session
+
+## Session Summary — 2026-09-22
+
+**Shipped:** Complete paid-verification system, code-complete and tested in simulated mode.
+
+**Commits (5):**
+- 120fd5d — Real M-Pesa STK push (KYC)
+- 78b3d3e — Land fees (KES 500 / 2000)
+- 04743d9 — Area fix (m²/acres/ha + promotion + hash freeze)
+- 2fb9bbe — Land payment sheet (frontend)
+- 3caba70 — Production hardening (reconciliation + IP whitelist + SMS mode)
+
+**Ready for:** Sandbox testing with real Daraja credentials.
+**No code changes needed** to flip simulated → sandbox → production.
+
+**Next priorities:**
+1. Daraja sandbox test with own phone (~2h)
+2. Company registration (name search → BRS → KRA → CR12 → bank → Paybill)
+3. Inheritance plan feature (free, no payments needed)
+
+**Three pending gaps addressed in 3caba70:**
+- Reconciliation cron for lost callbacks ✅
+- Safaricom IP whitelist on /mpesa ✅
+- SMS endpoint env-awareness ✅
+
+**Still not built:** inheritance plan, share sales, adverse possession, eConfirm webhook, USSD, government dashboard, blockchain-lite backup.
