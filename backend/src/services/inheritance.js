@@ -32,6 +32,19 @@ function genId(prefix) {
     Math.random().toString(36).slice(2, 6).toUpperCase();
 }
 
+
+function normalizePhoneInput(phone) {
+  try {
+    const { normalizeKenyaPhone } = require('../utils/phone');
+    return normalizeKenyaPhone(phone);
+  } catch (e) {
+    // Fallback: strip leading 0, prefix 254
+    let p = String(phone || '').replace(/\D/g, '');
+    if (p.startsWith('0')) p = '254' + p.slice(1);
+    return p;
+  }
+}
+
 function genCode() {
   return Math.random().toString(36).slice(2, 8).toUpperCase();
 }
@@ -45,7 +58,7 @@ const REQUIRED_ELDERS = 3;
  */
 function declarePlan(parcelId, parcel, data) {
   if (!parcel) return { error: 'Parcel not found' };
-  if (plans[parcelId] && plans[parcelId].status === 'activated') {
+  if (plans.get(parcelId) && plans.get(parcelId).status === 'activated') {
     return { error: 'Plan already activated. Withdraw first to make changes.' };
   }
 
@@ -77,10 +90,10 @@ function declarePlan(parcelId, parcel, data) {
   }
 
   // Withdraw any existing plan for this parcel (fresh declaration)
-  if (plans[parcelId]) {
-    const oldPlan = plans[parcelId];
-    for (const bid of oldPlan.beneficiaryIds || []) delete beneficiaries[bid];
-    for (const eid of oldPlan.elderIds || []) delete elders[eid];
+  if (plans.get(parcelId)) {
+    const oldPlan = plans.get(parcelId);
+    for (const bid of oldPlan.beneficiaryIds || []) delete beneficiaries.get(bid);
+    for (const eid of oldPlan.elderIds || []) delete elders.get(eid);
   }
 
   const now = new Date().toISOString();
@@ -93,7 +106,7 @@ function declarePlan(parcelId, parcel, data) {
       id: bid,
       parcelId,
       name: b.name,
-      phone: b.phone,
+      phone: normalizePhoneInput(b.phone),
       relationship: b.relationship || 'Child',
       share: Number(b.share),
       landNote: b.landNote || '',
@@ -104,7 +117,7 @@ function declarePlan(parcelId, parcel, data) {
       disputedAt: null,
       disputeReason: null,
     };
-    beneficiaries[bid] = bene;
+    beneficiaries.set(bid, bene);
     beneficiaryIds.push(bid);
   }
 
@@ -114,7 +127,7 @@ function declarePlan(parcelId, parcel, data) {
       id: eid,
       parcelId,
       name: e.name,
-      phone: e.phone,
+      phone: normalizePhoneInput(e.phone),
       relationship: e.relationship || 'Family elder',
       status: 'invited',       // invited | confirmed | objected
       confirmationCode: genCode(),
@@ -123,7 +136,7 @@ function declarePlan(parcelId, parcel, data) {
       objectedAt: null,
       objectionReason: null,
     };
-    elders[eid] = elder;
+    elders.set(eid, elder);
     elderIds.push(eid);
   }
 
@@ -143,7 +156,7 @@ function declarePlan(parcelId, parcel, data) {
     withdrawnAt: null,
   };
 
-  plans[parcelId] = plan;
+  plans.set(parcelId, plan);
   persist();
 
   // Send invites (async, fire-and-forget)
@@ -158,16 +171,17 @@ function declarePlan(parcelId, parcel, data) {
  */
 async function sendInvites(plan) {
   const parcel = require('./landProtection').getParcel(plan.parcelId);
-  const location = parcel ? `${parcel.village || parcel.ward || ''}, ${parcel.county}`.trim() : 'your land';
+  const parts = [parcel?.village, parcel?.ward, parcel?.county].filter(Boolean);
+  const location = parts.length ? parts.join(', ') : 'your land';
 
   for (const bid of plan.beneficiaryIds) {
-    const b = beneficiaries[bid];
+    const b = beneficiaries.get(bid);
     const msg = `FarmDirect Inheritance\n\n${plan.parentName} has named you as a beneficiary of the land in ${location}.\n\nYour share: ${(b.share * 100).toFixed(0)}%\n${b.landNote ? 'Note: ' + b.landNote + '\n' : ''}\nReply:\nCONFIRM ${b.confirmationCode} - accept\nDISPUTE ${b.confirmationCode} <reason> - object\n\nParcel: ${plan.parcelId}`;
     await sms.sendSms(b.phone, msg).catch(() => {});
   }
 
   for (const eid of plan.elderIds) {
-    const e = elders[eid];
+    const e = elders.get(eid);
     const msg = `FarmDirect Inheritance\n\n${plan.parentName} requests you to witness the inheritance plan for land in ${location}.\n\nBeneficiaries: ${plan.beneficiaryIds.length} children\nReply:\nCONFIRM ${e.confirmationCode} - witness\nOBJECT ${e.confirmationCode} <reason> - decline\n\nParcel: ${plan.parcelId}`;
     await sms.sendSms(e.phone, msg).catch(() => {});
   }
@@ -177,7 +191,7 @@ async function sendInvites(plan) {
  * Beneficiary confirms via SMS or app.
  */
 function confirmBeneficiary(beneficiaryId, code) {
-  const b = beneficiaries[beneficiaryId];
+  const b = beneficiaries.get(beneficiaryId);
   if (!b) return { error: 'Beneficiary not found' };
   if (b.confirmationCode !== code) return { error: 'Invalid code' };
   if (b.status === 'confirmed') return { error: 'Already confirmed' };
@@ -195,7 +209,7 @@ function confirmBeneficiary(beneficiaryId, code) {
  * Beneficiary disputes.
  */
 function disputeBeneficiary(beneficiaryId, code, reason) {
-  const b = beneficiaries[beneficiaryId];
+  const b = beneficiaries.get(beneficiaryId);
   if (!b) return { error: 'Beneficiary not found' };
   if (b.confirmationCode !== code) return { error: 'Invalid code' };
   if (b.status !== 'invited') return { error: 'Already ' + b.status };
@@ -204,7 +218,7 @@ function disputeBeneficiary(beneficiaryId, code, reason) {
   b.disputedAt = new Date().toISOString();
   b.disputeReason = reason || 'No reason given';
 
-  const plan = plans[b.parcelId];
+  const plan = plans.get(b.parcelId);
   if (plan) {
     plan.status = 'disputed';
     plan.disputedAt = new Date().toISOString();
@@ -219,7 +233,7 @@ function disputeBeneficiary(beneficiaryId, code, reason) {
  * Elder confirms as witness.
  */
 function confirmElder(elderId, code) {
-  const e = elders[elderId];
+  const e = elders.get(elderId);
   if (!e) return { error: 'Elder not found' };
   if (e.confirmationCode !== code) return { error: 'Invalid code' };
   if (e.status !== 'invited') return { error: 'Already ' + e.status };
@@ -236,7 +250,7 @@ function confirmElder(elderId, code) {
  * Elder objects to witnessing.
  */
 function objectElder(elderId, code, reason) {
-  const e = elders[elderId];
+  const e = elders.get(elderId);
   if (!e) return { error: 'Elder not found' };
   if (e.confirmationCode !== code) return { error: 'Invalid code' };
   if (e.status !== 'invited') return { error: 'Already ' + e.status };
@@ -254,15 +268,15 @@ function objectElder(elderId, code, reason) {
  * Auto-activate when all beneficiaries + all elders have confirmed.
  */
 function checkActivation(parcelId) {
-  const plan = plans[parcelId];
+  const plan = plans.get(parcelId);
   if (!plan) return { error: 'No plan' };
   if (plan.status !== 'declared') return { plan: enrichPlan(plan) };
 
   const allBenConfirmed = plan.beneficiaryIds.every(
-    id => beneficiaries[id].status === 'confirmed'
+    id => beneficiaries.get(id).status === 'confirmed'
   );
   const allEldersConfirmed = plan.elderIds.every(
-    id => elders[id].status === 'confirmed'
+    id => elders.get(id).status === 'confirmed'
   );
 
   if (allBenConfirmed && allEldersConfirmed) {
@@ -279,7 +293,7 @@ function checkActivation(parcelId) {
  * Parent withdraws the plan (only before activation).
  */
 function withdrawPlan(parcelId, parentPhone) {
-  const plan = plans[parcelId];
+  const plan = plans.get(parcelId);
   if (!plan) return { error: 'No plan to withdraw' };
   if (plan.parentPhone !== parentPhone) return { error: 'Only the parent can withdraw' };
   if (plan.status === 'activated') {
@@ -301,29 +315,29 @@ function enrichPlan(plan) {
   if (!plan) return null;
   return {
     ...plan,
-    beneficiaries: (plan.beneficiaryIds || []).map(id => beneficiaries[id]).filter(Boolean),
-    elders: (plan.elderIds || []).map(id => elders[id]).filter(Boolean),
+    beneficiaries: (plan.beneficiaryIds || []).map(id => beneficiaries.get(id)).filter(Boolean),
+    elders: (plan.elderIds || []).map(id => elders.get(id)).filter(Boolean),
     summary: {
       totalBeneficiaries: plan.beneficiaryIds?.length || 0,
       confirmedBeneficiaries: (plan.beneficiaryIds || [])
-        .map(id => beneficiaries[id])
+        .map(id => beneficiaries.get(id))
         .filter(b => b && b.status === 'confirmed').length,
       disputedBeneficiaries: (plan.beneficiaryIds || [])
-        .map(id => beneficiaries[id])
+        .map(id => beneficiaries.get(id))
         .filter(b => b && b.status === 'disputed').length,
       totalElders: plan.elderIds?.length || 0,
       confirmedElders: (plan.elderIds || [])
-        .map(id => elders[id])
+        .map(id => elders.get(id))
         .filter(e => e && e.status === 'confirmed').length,
       objectedElders: (plan.elderIds || [])
-        .map(id => elders[id])
+        .map(id => elders.get(id))
         .filter(e => e && e.status === 'objected').length,
     },
   };
 }
 
 function getPlan(parcelId) {
-  return enrichPlan(plans[parcelId]);
+  return enrichPlan(plans.get(parcelId));
 }
 
 /**
