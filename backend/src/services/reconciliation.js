@@ -172,6 +172,52 @@ async function reconcileMarket() {
   }
 }
 
+async function reconcileTrades() {
+  let trades;
+  try {
+    trades = require('./trades');
+  } catch (e) { return; }
+
+  const records = trades.listAwaitingPayment ? trades.listAwaitingPayment() : [];
+  const now = Date.now();
+
+  for (const record of records) {
+    const startedAt = new Date(record.escrowStkInitiatedAt || record.createdAt).getTime();
+    const age = now - startedAt;
+
+    if (age < STUCK_AFTER_MS) continue;
+    if (age > MAX_AGE_MS) continue;
+
+    try {
+      const status = await mpesa.queryStkStatus(record.escrowStkCheckoutId);
+      const code = Number(status.ResultCode);
+
+      if (code === 0) {
+        const parsed = {
+          checkoutRequestId: record.escrowStkCheckoutId,
+          success: true,
+          amount: Number(status.Amount) || record.escrowAmount,
+          mpesaReceipt: status.MpesaReceiptNumber || 'RECONCILED-' + Date.now(),
+          resultDesc: status.ResultDesc,
+          resultCode: 0,
+        };
+        await trades.confirmEscrowFromCallback(record.escrowStkCheckoutId, parsed);
+        console.log(`✅ Reconciled trade ${record.id} → funded`);
+      } else if (code === 1032 || code === 1037 || code === 2001) {
+        await trades.confirmEscrowFromCallback(record.escrowStkCheckoutId, {
+          checkoutRequestId: record.escrowStkCheckoutId,
+          success: false,
+          resultCode: code,
+          resultDesc: status.ResultDesc,
+        });
+        console.log(`❌ Trade ${record.id} funding failed per Safaricom`);
+      }
+    } catch (err) {
+      console.warn(`⚠️  Trade reconcile failed for ${record.id}:`, err.message);
+    }
+  }
+}
+
 async function runReconciliation() {
   if (running) return;                 // avoid overlapping runs
   if (!mpesa.isConfigured()) return;   // simulated mode, nothing to reconcile
@@ -181,6 +227,7 @@ async function runReconciliation() {
     await reconcileKyc();
     await reconcileLand();
     await reconcileMarket();
+    await reconcileTrades();
   } catch (err) {
     console.error('❌ Reconciliation error:', err.message);
   } finally {

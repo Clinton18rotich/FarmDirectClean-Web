@@ -333,3 +333,26 @@ api.market = {
   stats: () => request('/api/market/stats'),
   config: () => request('/api/market/config'),
 };
+
+
+// Trades (the orchestration layer)
+api.trades = {
+  // Create + fund
+  create: (data) => request('/api/trades/create', { method: 'POST', body: data }),
+  fund: (id, buyerPhone) => request(`/api/trades/${id}/fund`, { method: 'POST', body: { buyerPhone } }),
+
+  // Lifecycle
+  release: (id, data) => request(`/api/trades/${id}/release`, { method: 'POST', body: data }),
+  dispute: (id, data) => request(`/api/trades/${id}/dispute`, { method: 'POST', body: data }),
+
+  // Rider hooks
+  riderAccepted: (id, data) => request(`/api/trades/${id}/rider-accepted`, { method: 'POST', body: data }),
+  deliveryComplete: (id) => request(`/api/trades/${id}/delivery-complete`, { method: 'POST' }),
+  matchRider: (id) => request(`/api/trades/${id}/match-rider`, { method: 'POST' }),
+
+  // Queries
+  get: (id) => request(`/api/trades/${id}`),
+  myTrades: (userId, role) => request(`/api/trades/user/${userId}${role ? '?role=' + role : ''}`),
+  riderTrades: (riderId) => request(`/api/trades/rider/${riderId}`),
+  stats: () => request('/api/trades/stats'),
+};

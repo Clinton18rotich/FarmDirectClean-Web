@@ -265,6 +265,22 @@ router.post('/mpesa', requireSafaricomIP, (req, res) => {
     console.error('❌ Market callback route error:', err.message);
   }
 
+  // Route to Trades service (escrow funding for live trades)
+  try {
+    const trades = require('../services/trades');
+    trades.confirmEscrowFromCallback(parsed.checkoutRequestId, parsed)
+      .then(r => {
+        if (r?.error) {
+          console.warn('ℹ️  Trade callback (may be non-trade txn):', r.error);
+        } else if (r?.trade) {
+          console.log('✅ Trade escrow funded:', r.trade.id, '| status:', r.trade.status);
+        }
+      })
+      .catch(err => console.error('❌ Trade callback error:', err.message));
+  } catch (err) {
+    console.error('❌ Trade callback route error:', err.message);
+  }
+
   // NOTE: Order escrow is handled entirely by eConfirm (see services/econfirm.js).
   // The two money flows do not intersect.
 });
