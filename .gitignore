@@ -36,3 +36,4 @@ backend/.env.*
 start-tunnel.sh
 *.broken
 *.pre-marketplace
+backend/test-*.js
