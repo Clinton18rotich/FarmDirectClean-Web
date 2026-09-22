@@ -287,3 +287,20 @@ To go live: sign up at didit.me, set KYC_PROVIDER=didit, DIDIT_API_KEY=xxx
 - SMS endpoint env-awareness ✅
 
 **Still not built:** inheritance plan, share sales, adverse possession, eConfirm webhook, USSD, government dashboard, blockchain-lite backup.
+
+## 🎉 Sandbox M-Pesa Verified — 2026-09-22
+
+First real STK push accepted by Safaricom Daraja:
+- KYC request: KYC-MUCP74J0
+- checkoutRequestId: ws_CO_220920261616385708374149
+- responseCode: 0 (Success)
+- Callback URL: https://deal-denied-san-securities.trycloudflare.com/api/webhook/mpesa
+
+Integration stack fully verified end-to-end:
+✅ mpesa.js OAuth token generation
+✅ STK Push API call format
+✅ Callback URL reachability via Cloudflare Tunnel
+✅ Daraja sandbox authentication
+
+Full simulated→real transition demonstrated. Production
+credentials alone are what remains for go-live.
