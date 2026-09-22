@@ -219,7 +219,7 @@ Ref: ${theftId}`;
     status: 'active',
   };
 
-  alertHistory[theftId] = historyEntry;
+  alertHistory.set(theftId, historyEntry);
   persist();
 
   console.log('🚨 THEFT ALERT BROADCAST:', theftId);
@@ -250,7 +250,7 @@ function listActiveAlerts() {
  * Mark animal as found/recovered
  */
 function resolveAlert(theftId, resolution) {
-  const entry = alertHistory[theftId];
+  const entry = alertHistory.get(theftId);
   if (!entry) return null;
   entry.status = 'resolved';
   entry.resolvedAt = new Date().toISOString();

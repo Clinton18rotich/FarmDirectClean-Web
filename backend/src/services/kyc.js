@@ -321,7 +321,7 @@ async function createVerificationRequest(data) {
     createdAt: new Date().toISOString(),
   };
 
-  verifications[id] = record;
+  verifications.set(id, record);
   persist();
 
   console.log('🪪 KYC request created:', id, '|', userType, '|', record.idNumberMasked, '| fee: KES', KYC_FEE_KES);
@@ -333,7 +333,7 @@ async function createVerificationRequest(data) {
  * Mark payment as received, then run verification
  */
 async function processPaymentAndVerify(verificationId, paymentRef) {
-  const record = verifications[verificationId];
+  const record = verifications.get(verificationId);
   if (!record) return { error: 'Verification not found' };
   if (record.status !== 'pending_payment') {
     return { error: 'Already processed: ' + record.status };
@@ -355,7 +355,7 @@ async function processPaymentAndVerify(verificationId, paymentRef) {
  * Run the actual KYC provider check (called after payment)
  */
 async function runVerification(verificationId) {
-  const record = verifications[verificationId];
+  const record = verifications.get(verificationId);
   if (!record) return { error: 'Verification not found' };
 
   record.status = 'processing';
@@ -415,7 +415,7 @@ async function verifyIdentity(data) {
 // ═════════════════════════════════════════════════════
 
 function getVerification(id) {
-  return verifications[id];
+  return verifications.get(id);
 }
 
 function getVerificationByUser(userId) {
@@ -514,7 +514,7 @@ module.exports = {
  * Called after user submits ID
  */
 async function initiateKYCPayment(verificationId, phone) {
-  const record = verifications[verificationId];
+  const record = verifications.get(verificationId);
   if (!record) return { error: 'Verification not found' };
   if (record.status !== 'pending_payment') {
     return { error: 'Already processed: ' + record.status };
