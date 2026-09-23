@@ -147,26 +147,50 @@ Inside `src/components/ShambaSafi.jsx` (2043 lines):
 
 ## Current State — Where We Left Off
 
-**Just finished:**
-- Module G (Land Sovereignty) fully wired into ShambaSafi.jsx
-- File at 2043 lines
-- Backend tested: 1 parcel, 3 witnesses, all features working via API
-- **NOT YET TESTED IN BROWSER**
+**Session 5A COMPLETE — shipped 2026-09-23**
 
-**Frontend status:**
-- Module G component inline in ShambaSafi.jsx (starting line 1506)
-- Wired to render when activeModule === 'land-sovereignty'
-- api.landProtection methods in api.js line 205
+Commits:
+- `424e516` 📸 Session 5A: Photos, photo gallery, list-for-sale, transfer ownership
+- `50d2d26` 🧹 Trim whitespace on names, phones, age tags
+
+Both pushed to origin/master. Local + remote in sync. Build clean.
+
+**Landed in Session 5A:**
+- Photo upload (camera + gallery), auto-resize to 800px @ 60%
+- Photo required at registration; PhotoViewer full-screen on card tap
+- PhotoGalleryModal with auto-save on every add/delete (no Save button)
+- Age tags on photos persisted as { url, age, addedAt } objects
+- ListForSaleModal + 💰 List for Sale / Withdraw buttons
+- TransferOwnershipModal (gift/inheritance/dowry/direct sale)
+- 🤝 Transfer button on animal card
+- Backend: POST /api/shamba/livestock/:id/transfer
+- Backend: transferOwnership() service + 30-day frozenUntil lock
+- Backend: photo normalizer (upgrades legacy string URLs to objects)
+
+**Verified end-to-end via Android Chrome + curl.**
 
 ## What's Missing (Priority Order)
 
-1. **Test Module G in browser** (5 min) — reload port 5173, check 7 modules show, tap Module G
-2. **Push frontend changes** (5 min)
-3. **Consumer trust features** (2 hrs): self-destructing PIN, auto-report on scan failure, whistleblower rewards
-4. **Government dashboard + tax** (4 hrs): real-time map, disease heatmap, auto tax deduction
-5. **Daily 6AM SMS health check** (1 hr): reply 1=healthy, 2=sick → auto vet dispatch
-6. **Real integrations** (2 hrs): Africa's Talking API key, eConfirm API key
-7. **Android port** (4-6 hrs): port entire backend + frontend to FarmDirect Android repo
+1. **Session 5B — Buyer Marketplace UI** (~800-1000 lines, 8 screens):
+   - MarketplaceScreen (browse listings + filters)
+   - ListingDetailScreen (view passport + animal)
+   - UnlockContactModal (KES 100 STK)
+   - MakeOfferModal (buyer offer)
+   - SellerOffersInbox (counter/reject)
+   - Checkout rebuild (api.trades.create + api.trades.fund)
+   - TradeTrackingScreen (live status)
+   - ReleaseCodeModal (4-digit escrow release)
+   - RiderJobPipeline (rider assigned jobs)
+   All backend exists in market.js + trades.js. Frontend is the gap.
+
+2. **Session 5C — Real eConfirm escrow** — blocked on eConfirm API reply
+
+3. **Session 6 — Livestock inheritance** — reuses transferOwnership with reason='inheritance'
+
+4. **Real integrations**: Africa's Talking SMS, Didit KYC, M-Pesa production
+   (all blocked on company registration / paybill)
+
+5. **Android port** (4-6 hrs): port entire backend + frontend to FarmDirect Android repo
 
 ## How To Resume in a New Chat
 
@@ -370,34 +394,100 @@ built by farmers, for farmers, before the government did it."
 
 This is a moat. Protect it.
 
-## Session 5A Plan (2026-09-23)
+## Session 5A — COMPLETE (2026-09-23)
 
-**The vision, restated:** Farmers sell agricultural products directly
-to buyers, eliminating brokers. Everything else (passports, land,
-vet network, meat traceability) supports this.
+**SHAs:** `424e516` (main) + `50d2d26` (trim cleanup). Both pushed.
 
-**Why animal registration matters:** Kenya has no public national
-animal registry. FarmDirect's livestock passport is the first
-consumer-facing version. Every farmer who registers becomes a data
-point in this infrastructure. When ANITRAC (gov RFID) rolls out,
+**What landed:**
+
+Frontend:
+- Dual camera/gallery photo upload with auto-resize (800px @ 60%)
+- Photo required at registration; PhotoViewer full-screen on tap
+- PhotoGalleryModal: auto-saves each add/delete, age tags, no Save button
+- ListForSaleModal + List for Sale / Withdraw buttons on animal card
+- TransferOwnershipModal: gift / inheritance / dowry / direct sale flows
+  - Witness section auto-shows for Gift (exactly 2 required)
+  - Optional new photo at transfer becomes primary
+  - Confirm screen with 30-day warning
+- Transfer button on card (row 1, next to Photos)
+
+Backend:
+- Photos persist as { url, age, addedAt } objects
+- Read-time normalizer upgrades legacy string URLs (no migration)
+- POST /api/shamba/livestock/:id/transfer
+- transferOwnership() service:
+  - witnesses: exactly 2 required for gifts, optional otherwise
+  - 30-day frozenUntil lock post-transfer
+  - ownership history append with transferReason / note / witnesses
+  - optional new photo becomes primary
+- Express body limit raised to 10 MB (base64 photos)
+
+**Design decisions locked in code:**
+- No KYC to RECEIVE a gift (KYC only needed to sell)
+- Exactly 2 family witnesses for gift transfers
+- Recipient sees animal immediately in "My Animals"
+- 30-day freeze after any transfer (prevent disputes)
+- Newest photo at transfer becomes primary automatically
+- Photo age tags persist as objects with addedAt timestamps
+- Auto-save in PhotoGalleryModal (no unsaved-changes modal)
+
+**Original vision (still holds):** Farmers sell directly to buyers,
+eliminating brokers. The animal passport is the anchor. Kenya has
+no public national animal registry — FarmDirect's passport is the
+first consumer-facing version. When ANITRAC (gov RFID) rolls out,
 FarmDirect is the consumer layer already in place.
 
-**Session 5A scope (six items):**
-1. api.shamba.listForSale / withdrawFromSale / saleable / updatePhotos
-2. Photo upload on Register Animal form (gallery method)
-3. "List for Sale" button + modal on animal card
-4. Marketplace Livestock tab → new backend (/api/market/listings)
-5. Farmer Register → "Livestock" redirects to ShambaSafi
-6. "Your Farm" pulls real data from /api/shamba/livestock/owner/:id
+**Verification completed:** All UI flows exercised via Android Chrome
+(register with photo, add 2nd photo with age tag, list for sale at
+KES 85,000, open Transfer modal, select Gift, fill witnesses, reach
+Confirm screen). Server verified via curl: photos array contains
+2 objects with age tags, primary photoUrl matches photos[0].
+Backend transfer flow verified separately via curl (gift with 2
+witnesses -> owner changed -> frozenUntil set -> re-transfer rejected).
 
-**Marketplace filter behavior:** Livestock tab shows all livestock,
-with a Type sub-filter (Cow/Goat/Sheep/Pig/Chicken/Camel/Donkey/Rabbit).
+## Known Issues Log (2026-09-23)
 
-**The demo that proves FarmDirect works:**
-Farmer registers a cow with photo → lists at KES 85,000 →
-hotel in Nairobi sees listing → unlocks contact (KES 100) →
-makes offer → farmer accepts → escrow holds → rider delivers →
-buyer releases → ownership transfers → both rate.
+### 🐛 Passport IDs use `O` but render like `0`
+Livestock passport IDs use letter `O` (e.g. `KE-COW-OO8SI8DW`), but
+in the default UI font `O` and `0` are visually identical. Users
+reading the ID off the screen type `KE-COW-008SI8DW`, which fails
+lookups with "Animal not found". This bit us during Session 5A
+verification.
 
-Everything in that flow is already built on the backend (Sessions 1-4).
-Session 5A makes it visible in the UI.
+**Fix options (Session 5B candidate or small dedicated patch):**
+1. Exclude ambiguous characters (O, I, l, 0, 1, S, 5, Z, 2) from the
+   passport ID generator — cleanest long-term fix
+2. Add a copy-to-clipboard button next to the passport ID on the card
+3. Use a monospace font with slashed zero for ID display
+
+Recommend (1) + (2).
+
+### 🐛 Legacy trailing whitespace in owner names
+Older registrations stored names like `'Kipngetich Clinton '` (trailing
+space). This split owner counts — `'Kipngetich Clinton '` (1 animal) vs
+`'Kipngetich Clinton'` (17 animals). Fixed in `50d2d26` for all new
+data (frontend + backend trims), but existing records still have the
+bad data. **Needs a migration pass — not yet scheduled.**
+
+### 🔴 No auth layer — session in localStorage only
+Farmer identity is stored in browser localStorage. Clearing Chrome
+data or opening a fresh browser profile loses the farmer identity;
+user must re-register with the same phone to restore. Works for demo,
+but blocks production.
+
+**Future:** phone + OTP login (Kenya-friendly). Pairs naturally with
+Session 9 (USSD access *384#) since both are phone-based identity.
+
+### 🟡 Multi-Vite port confusion during dev
+When Vite is restarted without killing previous processes, it lands on
+5174/5175/5176, and Chrome serves cached localStorage against a
+different port. Symptom: "Register as farmer first" while animals
+exist server-side.
+
+**Rule:** Always `pkill -9 -f vite` before `npm run dev`. Add to
+CONTEXT or a dev-only README section.
+
+### 🟡 Chunk size warning at build
+Vite warns `Some chunks are larger than 500 kB after minification`
+(~570 kB main bundle). Pre-existing, cosmetic. Fix with dynamic
+imports / code-splitting in a future session.
