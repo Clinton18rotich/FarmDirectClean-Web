@@ -2,6 +2,8 @@
 // Session 5B-1: Marketplace shell + Browse tab. My Offers / Selling placeholders.
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
+import MyOffersTab from './MyOffersTab';
+import SellingTab from './SellingTab';
 
 const inputStyle = { width:'100%', padding:'10px 12px', borderRadius:10, border:'2px solid #E0E0E0', fontSize:14, marginBottom:6, boxSizing:'border-box', fontFamily:'inherit', color:'#333' };
 const labelStyle = { fontSize:11, fontWeight:'bold', color:'#555', display:'block', marginBottom:4 };
@@ -89,8 +91,8 @@ export default function MarketplaceScreen({ currentFarmer, onClose, onOpenListin
       {/* Body */}
       <div style={{ flex:1, overflowY:'auto', padding:14 }}>
         {tab === 'browse' && <BrowseTab {...{ filters, setFilters, showFilters, setShowFilters, activeFilterCount, clearFilters, listings, loading, error, loadListings, onOpenListing, formatPrice }} />}
-        {tab === 'offers' && <PlaceholderTab icon="📨" title="My Offers" body="Your active offers on livestock listings will appear here." />}
-        {tab === 'selling' && <PlaceholderTab icon="🏷️" title="Selling" body="Your livestock listings and incoming buyer offers will appear here." />}
+        {tab === 'offers' && <MyOffersTab currentFarmer={currentFarmer} onOpenListing={onOpenListing} />}
+        {tab === 'selling' && <SellingTab currentFarmer={currentFarmer} onOpenListing={onOpenListing} />}
       </div>
     </div>
   );
