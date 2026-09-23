@@ -14,7 +14,7 @@ const STATUS_META = {
   withdrawn: { label: '↩️ Withdrawn',  bg: '#F0F0F0', fg: '#666' },
 };
 
-export default function MyOffersTab({ currentFarmer, onOpenListing }) {
+export default function MyOffersTab({ currentFarmer, onOpenListing, onCheckout, onOpenTrade }) {
   const [offers, setOffers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -93,12 +93,14 @@ export default function MyOffersTab({ currentFarmer, onOpenListing }) {
         acting={actingId === o.id}
         onWithdraw={() => handleWithdraw(o.id)}
         onOpenListing={() => onOpenListing && onOpenListing(o.listingId)}
+        onCheckout={() => onCheckout && onCheckout(o)}
+        onOpenTrade={onOpenTrade}
       />)}
     </>
   );
 }
 
-function OfferCard({ offer, currentFarmer, acting, onWithdraw, onOpenListing }) {
+function OfferCard({ offer, currentFarmer, acting, onWithdraw, onOpenListing, onCheckout }) {
   const meta = STATUS_META[offer.status] || STATUS_META.pending;
   const last = offer.history?.[offer.history.length - 1];
   const isBuyerTurn = offer.currentTurn === 'buyer' && (offer.status === 'pending' || offer.status === 'countered');
@@ -149,6 +151,24 @@ function OfferCard({ offer, currentFarmer, acting, onWithdraw, onOpenListing }) 
       <p style={{ fontSize:10, color:'#999', margin:'6px 0 8px' }}>
         Updated {offer.updatedAt ? new Date(offer.updatedAt).toLocaleString() : '—'}
       </p>
+
+      {offer.status === 'accepted' && onCheckout && (
+        <button
+          onClick={onCheckout}
+          style={{ ...btn, background:'#2E7D32', color:'white', width:'100%', padding:'12px', fontSize:13, marginBottom:8 }}
+        >
+          💰 Proceed to Escrow — KES {Number(offer.amount || 0).toLocaleString()}
+        </button>
+      )}
+
+      {offer.tradeId && onOpenTrade && (
+        <button
+          onClick={() => onOpenTrade(offer.tradeId)}
+          style={{ ...btn, background:'#1976D2', color:'white', width:'100%', padding:'12px', fontSize:13, marginBottom:8 }}
+        >
+          📊 Track Trade
+        </button>
+      )}
 
       <div style={{ display:'flex', gap:6 }}>
         {onOpenListing && (

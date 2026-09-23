@@ -72,7 +72,15 @@ export default function TradeCheckout({ offer, currentFarmer, onClose, onTrack }
         offerId: offer.id,
         creatorId: currentFarmer.id,
       });
-      if (!res.success) throw new Error(res.message || 'Failed to create trade');
+      if (!res.success) {
+        // Trade already exists — jump straight to tracking
+        if (res.trade && res.trade.id && onTrack) {
+          onTrack(res.trade.id);
+          onClose();
+          return;
+        }
+        throw new Error(res.message || 'Failed to create trade');
+      }
       setTrade(res.trade);
       setStep('fund');
     } catch (err) {

@@ -29,7 +29,9 @@ router.post('/create', async (req, res) => {
     if (!creatorId) return res.status(400).json({ success: false, message: 'creatorId required' });
 
     const result = await trades.createTrade({ offerId, creatorId });
-    if (result.error) return res.status(400).json({ success: false, message: result.error });
+    if (result.error) {
+      return res.status(400).json({ success: false, message: result.error, trade: result.trade || null });
+    }
     res.json({ success: true, trade: result.trade });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
