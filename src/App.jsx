@@ -5,6 +5,11 @@ import ChatScreen from "./pages/ChatScreen";
 import FarmerRegister from "./components/FarmerRegister";
 import ShambaSafi from "./components/ShambaSafi";
 import Checkout from "./components/Checkout";
+import MarketplaceScreen from "./components/MarketplaceScreen";
+import TradeCheckout from "./components/TradeCheckout";
+import TradeTrackingScreen from "./components/TradeTrackingScreen";
+import ReleaseCodeModal from "./components/ReleaseCodeModal";
+import RiderJobPipeline from "./components/RiderJobPipeline";
 import BusinessDashboard from "./pages/BusinessDashboard";
 import React, { useState, useEffect } from 'react';
 import { ALL_PRODUCTS, CATEGORIES, CHAT_FARMERS, RIDERS } from './data/farmData';
@@ -28,6 +33,11 @@ export default function App() {
   const [kycTier, setKycTier] = useState(null);
 
   const [myFarmer, setMyFarmer] = useState(null);
+  const [showMarketplace, setShowMarketplace] = useState(false);
+  const [trackingTradeId, setTrackingTradeId] = useState(null);
+  const [checkoutTrade, setCheckoutTrade] = useState(null);
+  const [releaseTrade, setReleaseTrade] = useState(null);
+  const [rider, setRider] = useState(null);
   const [justRegistered, setJustRegistered] = useState(false);
   const [registeredProducts, setRegisteredProducts] = useState([]);
 
@@ -88,6 +98,13 @@ export default function App() {
       if (saved) setMyFarmer(JSON.parse(saved));
     } catch (e) {}
     loadRegisteredFarmers();
+  }, []);
+
+  useEffect(() => {
+    try {
+      const savedRider = localStorage.getItem('riderRegistration');
+      if (savedRider) setRider(JSON.parse(savedRider));
+    } catch (e) { /* ignore */ }
   }, []);
 
   // Load KYC status when farmer is set
@@ -277,7 +294,7 @@ export default function App() {
             )}
 
             {/* Live mode banner */}
-            {!isDemoMode && !myFarmer && (
+            {!isDemoMode && (
               <div style={{
                 margin:'0 12px 12px', background:'#E8F5E9', border:'1px solid #A5D6A7',
                 borderRadius:12, padding:14, display:'flex', alignItems:'center', gap:10
@@ -289,11 +306,11 @@ export default function App() {
                     {registeredProducts.length} products from {new Set(registeredProducts.map(p => p.farmer)).size} real registered farmers
                   </p>
                 </div>
-                <button onClick={() => setShowRegister(true)} style={{
+                <button onClick={() => setShowMarketplace(true)} style={{
                   background:'#4CAF50', color:'white', border:'none',
                   padding:'10px 14px', borderRadius:10, fontSize:12,
                   fontWeight:'bold', cursor:'pointer'
-                }}>Join Them</button>
+                }}>Browse</button>
               </div>
             )}
 
@@ -416,7 +433,7 @@ export default function App() {
 
         {tab === 1 && <ChatScreen />}
         {tab === 2 && <EconomyScreen />}
-        {tab === 3 && <DeliveryScreen />}
+        {tab === 3 && (rider ? <RiderJobPipeline currentRider={rider} onClose={() => setTab(0)} /> : <DeliveryScreen />)}
         {tab === 4 && <TrackingScreen />}
         {tab === 5 && <div style={{padding:20,textAlign:'center'}}><h2>📍 Nakuru</h2><span style={{fontSize:80}}>⛅</span><h1 style={{fontSize:56}}>24°C</h1></div>}
         {tab === 6 && <AlertsScreen />}
@@ -465,6 +482,42 @@ export default function App() {
             setShowCheckout(false);
             alert('Order placed! ' + (order.escrowId ? 'Escrow: ' + order.escrowId : 'Order: ' + order.orderId));
           }} 
+        />
+      )}
+
+      {showMarketplace && (
+        <MarketplaceScreen
+          currentFarmer={myFarmer?.farmer ? { id: myFarmer.farmer.phone, fullName: myFarmer.farmer.fullName, phone: myFarmer.farmer.phone } : null}
+          onClose={() => setShowMarketplace(false)}
+          onOpenListing={() => {}}
+        />
+      )}
+
+      {trackingTradeId && (
+        <TradeTrackingScreen
+          tradeId={trackingTradeId}
+          currentFarmer={myFarmer?.farmer ? { id: myFarmer.farmer.phone, fullName: myFarmer.farmer.fullName, phone: myFarmer.farmer.phone } : null}
+          onClose={() => setTrackingTradeId(null)}
+          onOpenReleaseModal={(trade) => setReleaseTrade(trade)}
+          onOpenCheckout={(trade) => { setCheckoutTrade(trade); setTrackingTradeId(null); }}
+        />
+      )}
+
+      {checkoutTrade && (
+        <TradeCheckout
+          offer={checkoutTrade}
+          currentFarmer={myFarmer?.farmer ? { id: myFarmer.farmer.phone, fullName: myFarmer.farmer.fullName, phone: myFarmer.farmer.phone } : null}
+          onClose={() => setCheckoutTrade(null)}
+          onTrack={(id) => { setTrackingTradeId(id); setCheckoutTrade(null); }}
+        />
+      )}
+
+      {releaseTrade && (
+        <ReleaseCodeModal
+          trade={releaseTrade}
+          currentFarmer={myFarmer?.farmer ? { id: myFarmer.farmer.phone, fullName: myFarmer.farmer.fullName, phone: myFarmer.farmer.phone } : null}
+          onClose={() => setReleaseTrade(null)}
+          onSuccess={() => setReleaseTrade(null)}
         />
       )}
 
