@@ -1984,10 +1984,19 @@ function clearFrozen(passportId) {
 // SESSION 1: LIVESTOCK PLUGIN (for trades.js orchestration)
 // ═══════════════════════════════════════════════════════════
 
-/**
- * Update the photo gallery for an animal (up to 5).
- * First photo becomes the primary photoUrl.
- */
+// Photos: { url, age, addedAt }. Legacy string URLs upgraded on read.
+function normalizePhotos(rawPhotos, fallbackAt) {
+  if (!Array.isArray(rawPhotos)) return [];
+  const at = fallbackAt || new Date().toISOString();
+  return rawPhotos.map(p => {
+    if (typeof p === 'string') return { url: p, age: null, addedAt: at };
+    if (p && typeof p === 'object' && p.url) {
+      return { url: p.url, age: p.age || null, addedAt: p.addedAt || at };
+    }
+    return null;
+  }).filter(Boolean);
+}
+
 function updatePhotos(passportId, { ownerId, photos }) {
   const animal = livestock.get(passportId);
   if (!animal) return { error: 'Animal not found' };
@@ -1996,9 +2005,10 @@ function updatePhotos(passportId, { ownerId, photos }) {
   if (!Array.isArray(photos)) return { error: 'photos must be array' };
   if (photos.length > 5) return { error: 'Maximum 5 photos' };
 
-  animal.photos = photos;
-  if (photos.length > 0 && !animal.photoUrl) {
-    animal.photoUrl = photos[0];
+  const normalized = normalizePhotos(photos, animal.registeredAt);
+  animal.photos = normalized;
+  if (normalized.length > 0) {
+    animal.photoUrl = normalized[0].url;
   }
   persist();
   return { animal };
@@ -2102,10 +2112,98 @@ module.exports.getPhysicalAttributes = () => require('./physicalAttributes');
 module.exports.markForSale = markForSale;
 module.exports.markSold = markSold;
 module.exports.withdrawFromSale = withdrawFromSale;
+// Ownership transfer outside trade flow (gift, inheritance, dowry, direct sale).
+// Gift requires exactly 2 witnesses; sets 30-day frozenUntil lock.
+function transferOwnership(passportId, {
+  fromOwnerId,
+  toOwnerId,
+  toOwnerName,
+  toOwnerPhone,
+  transferReason,
+  transferNote,
+  witnesses,
+  newPhoto,
+}) {
+  const animal = livestock.get(passportId);
+  if (!animal) return { error: 'Animal not found' };
+  if (animal.ownerId !== fromOwnerId) return { error: 'Not the owner' };
+  if (animal.frozenByTradeId) return { error: 'Animal is in an active trade' };
+  if (animal.status !== 'alive') return { error: 'Animal is not alive' };
+  if (animal.frozenUntil && new Date(animal.frozenUntil) > new Date()) {
+    return { error: `Animal is frozen until ${animal.frozenUntil} (30-day post-transfer lock)` };
+  }
+
+  const REASONS = ['sale', 'gift', 'inheritance', 'dowry', 'other'];
+  if (!REASONS.includes(transferReason)) {
+    return { error: `transferReason must be one of: ${REASONS.join(', ')}` };
+  }
+  if (!toOwnerName) return { error: 'toOwnerName required' };
+
+  if (transferReason === 'gift') {
+    if (!Array.isArray(witnesses) || witnesses.length !== 2) {
+      return { error: 'Gift transfers require exactly 2 witnesses' };
+    }
+    for (const w of witnesses) {
+      if (!w || !w.name || !w.phone) {
+        return { error: 'Each witness needs name and phone' };
+      }
+    }
+  } else if (witnesses && !Array.isArray(witnesses)) {
+    return { error: 'witnesses must be an array' };
+  }
+
+  const now = new Date().toISOString();
+
+  const current = animal.ownershipHistory?.[animal.ownershipHistory.length - 1];
+  if (current && !current.to) {
+    current.to = now;
+  }
+
+  animal.ownershipHistory = animal.ownershipHistory || [];
+  const newOwnerId = toOwnerId || `UNREG-${Date.now()}`;
+  animal.ownershipHistory.push({
+    ownerId: newOwnerId,
+    ownerName: toOwnerName,
+    ownerPhone: toOwnerPhone || null,
+    from: now,
+    via: 'transfer',
+    transferReason,
+    transferNote: transferNote || null,
+    witnesses: transferReason === 'gift' ? witnesses : (witnesses || []),
+    recordedBy: fromOwnerId,
+  });
+
+  animal.ownerId = newOwnerId;
+  animal.ownerName = toOwnerName;
+  if (toOwnerPhone) animal.ownerPhone = toOwnerPhone;
+
+  if (animal.forSale) {
+    animal.forSale.status = 'withdrawn';
+    animal.forSale.withdrawnAt = now;
+    animal.forSale.withdrawnReason = 'transferred';
+  }
+
+  if (newPhoto && typeof newPhoto === 'string') {
+    animal.photos = normalizePhotos(animal.photos, animal.registeredAt);
+    animal.photos.unshift({ url: newPhoto, age: null, addedAt: now });
+    if (animal.photos.length > 5) animal.photos = animal.photos.slice(0, 5);
+    animal.photoUrl = newPhoto;
+  }
+
+  const freezeMs = 30 * 24 * 60 * 60 * 1000;
+  animal.frozenUntil = new Date(Date.now() + freezeMs).toISOString();
+  animal.lastTransferredAt = now;
+
+  persist();
+  return { animal };
+}
+
 module.exports.updateOwnership = updateOwnership;
+module.exports.transferOwnership = transferOwnership;
 module.exports.getSaleableLivestock = getSaleableLivestock;
 module.exports.setFrozen = setFrozen;
 module.exports.updatePhotos = updatePhotos;
+module.exports.normalizePhotos = normalizePhotos;
 module.exports.clearFrozen = clearFrozen;
 module.exports.livestockPlugin = livestockPlugin;
 

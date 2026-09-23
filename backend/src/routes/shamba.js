@@ -230,6 +230,35 @@ router.post('/livestock/:passportId/photos', (req, res) => {
   }
 });
 
+// Transfer ownership (gift, inheritance, dowry, direct sale).
+router.post('/livestock/:passportId/transfer', (req, res) => {
+  try {
+    const {
+      fromOwnerId,
+      toOwnerId,
+      toOwnerName,
+      toOwnerPhone,
+      transferReason,
+      transferNote,
+      witnesses,
+      newPhoto,
+    } = req.body;
+
+    if (!fromOwnerId) return res.status(400).json({ success: false, message: 'fromOwnerId required' });
+    if (!toOwnerName) return res.status(400).json({ success: false, message: 'toOwnerName required' });
+    if (!transferReason) return res.status(400).json({ success: false, message: 'transferReason required' });
+
+    const result = shamba.transferOwnership(req.params.passportId, {
+      fromOwnerId, toOwnerId, toOwnerName, toOwnerPhone,
+      transferReason, transferNote, witnesses, newPhoto,
+    });
+    if (result.error) return res.status(400).json({ success: false, message: result.error });
+    res.json({ success: true, animal: result.animal });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
 /**
  * Get animal lineage (3 generations + offspring)
  */

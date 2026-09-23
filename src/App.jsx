@@ -72,6 +72,15 @@ export default function App() {
   };
 
   useEffect(() => {
+    // Session 5A: Listen for livestock redirect from FarmerRegister
+    const handler = (e) => {
+      setShowShamba(true);
+    };
+    window.addEventListener('openShambaSafi', handler);
+    return () => window.removeEventListener('openShambaSafi', handler);
+  }, []);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('admin') === '1') setShowBusiness(true);
     try {

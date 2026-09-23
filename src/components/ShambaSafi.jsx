@@ -3,6 +3,10 @@ import LocationPicker from './LocationPicker';
 import PhysicalProfileForm from './PhysicalProfileForm';
 import MeasurementGuideModal from './MeasurementGuideModal';
 import LandPaymentSheet from './LandPaymentSheet';
+import ListForSaleModal from './ListForSaleModal';
+import PhotoViewer from './PhotoViewer';
+import PhotoGalleryModal from './PhotoGalleryModal';
+import TransferOwnershipModal from './TransferOwnershipModal';
 import { api } from '../services/api';
 import { normalizeKenyaPhone, isValidKenyaPhone } from '../utils/phone';
 
@@ -147,6 +151,8 @@ function LandModule({ myFarmer, myLand, reload }) {
     location: null, titleDeed: '', areaHectares: '', landUse: 'Mixed farming', witnesses: [],
   });
   const [submitting, setSubmitting] = useState(false);
+
+
   const [error, setError] = useState(null);
 
   const myOwnLand = myFarmer ? myLand.filter(p => p.ownerPhone === myFarmer.farmer?.phone) : [];
@@ -239,6 +245,14 @@ function LandModule({ myFarmer, myLand, reload }) {
 // ═══════════════════════════════════════════════════
 function LivestockModule({ myFarmer, myLivestock, reload }) {
   const [view, setView] = useState('list');
+
+  // Session 5A: List for sale
+  const [listTarget, setListTarget] = useState(null);
+
+  // Session 5A Part 2: photo viewer + gallery
+  const [photoViewer, setPhotoViewer] = useState(null);
+  const [photoGalleryTarget, setPhotoGalleryTarget] = useState(null);
+  const [transferTarget, setTransferTarget] = useState(null);
   
   // Load physical attribute constants on mount
   useEffect(() => {
@@ -249,6 +263,7 @@ function LivestockModule({ myFarmer, myLivestock, reload }) {
   const [tab, setTab] = useState('alive');
   const [form, setForm] = useState({
     type: 'Cow', breed: '', age: '', gender: 'Female', color: '', location: null,
+    photoUrl: '',
     isNewborn: false, motherPassport: '', fatherPassport: '', birthWeight: '',
     // Physical profile (all optional)
     weight: '', heartGirth: '', bodyLength: '', heightAtWithers: '',
@@ -264,6 +279,54 @@ function LivestockModule({ myFarmer, myLivestock, reload }) {
     brandMark: false, earTag: false,
   });
   const [submitting, setSubmitting] = useState(false);
+
+// Session 5A: Photo picker — works for both camera and gallery inputs
+  const handlePhotoSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const rawDataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => resolve(ev.target.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const img = await new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = reject;
+        image.src = rawDataUrl;
+      });
+
+      const MAX_DIM = 800;          // reduced from 1024
+      let { width, height } = img;
+      if (width > MAX_DIM || height > MAX_DIM) {
+        if (width > height) {
+          height = Math.round((height * MAX_DIM) / width);
+          width = MAX_DIM;
+        } else {
+          width = Math.round((width * MAX_DIM) / height);
+          height = MAX_DIM;
+        }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      const resizedDataUrl = canvas.toDataURL('image/jpeg', 0.6);   // reduced from 0.75
+
+      setForm({ ...form, photoUrl: resizedDataUrl });
+      console.log('📸 Photo resized to', Math.round(resizedDataUrl.length / 1024), 'KB');
+    } catch (err) {
+      console.error('Photo processing failed:', err);
+      alert('Could not process photo: ' + err.message);
+    }
+    // Reset the input so the same file can be picked again if needed
+    e.target.value = '';
+  };
+
   const [error, setError] = useState(null);
   const [showGuide, setShowGuide] = useState(false);
   const [constants, setConstants] = useState(null);
@@ -288,6 +351,9 @@ function LivestockModule({ myFarmer, myLivestock, reload }) {
     setSubmitting(true);
     try {
       const result = await api.shamba.registerLivestock({
+        // Photo (Session 5A)
+        photoUrl: form.photoUrl,
+        photos: form.photoUrl ? [form.photoUrl] : [],
         // Owner & basic
         ownerId: myFarmer.farmer?.phone,
         ownerName: myFarmer.farmer?.fullName,
@@ -424,6 +490,96 @@ function LivestockModule({ myFarmer, myLivestock, reload }) {
           {ANIMAL_TYPES.map(t => <option key={t}>{t}</option>)}
         </select>
 
+        {/* Session 5A: Photo upload — dual camera + gallery */}
+        <label style={labelStyle}>Photo * <span style={{fontWeight:'normal',color:'#999'}}>(required for theft protection)</span></label>
+        <div style={{background:'#F9FAFB', borderRadius:10, padding:12, marginBottom:12, border:'2px dashed #ddd', textAlign:'center'}}>
+          {form.photoUrl ? (
+            <div>
+              <img
+                src={form.photoUrl}
+                alt="Animal"
+                style={{maxWidth:'100%', maxHeight:200, borderRadius:8, marginBottom:8}}
+              />
+              <button
+                type="button"
+                onClick={() => setForm({...form, photoUrl: ''})}
+                style={{background:'#FFEBEE', color:'#C62828', border:'none', padding:'6px 12px', borderRadius:6, fontSize:11, cursor:'pointer', fontWeight:'bold'}}
+              >
+                ✕ Remove Photo
+              </button>
+            </div>
+          ) : (
+            <div style={{padding:16}}>
+              <span style={{fontSize:48, display:'block', marginBottom:8}}>📸</span>
+              <strong style={{fontSize:15, color:'#2E7D32', display:'block', marginBottom:4}}>Add a Photo of This Animal</strong>
+              <span style={{fontSize:11, color:'#666', display:'block', marginBottom:14}}>Shows the animal as it looks today. Prevents theft.</span>
+
+              <div style={{display:'flex', gap:8, justifyContent:'center', flexWrap:'wrap'}}>
+                {/* Camera button */}
+                <button
+                  type="button"
+                  onClick={() => document.getElementById('animal-photo-camera').click()}
+                  style={{
+                    background:'#2E7D32',
+                    color:'white',
+                    border:'none',
+                    padding:'12px 20px',
+                    borderRadius:20,
+                    fontSize:13,
+                    fontWeight:'bold',
+                    cursor:'pointer',
+                    display:'flex',
+                    alignItems:'center',
+                    gap:6
+                  }}
+                >
+                  📷 Take Photo
+                </button>
+
+                {/* Gallery button */}
+                <button
+                  type="button"
+                  onClick={() => document.getElementById('animal-photo-gallery').click()}
+                  style={{
+                    background:'white',
+                    color:'#2E7D32',
+                    border:'2px solid #2E7D32',
+                    padding:'10px 20px',
+                    borderRadius:20,
+                    fontSize:13,
+                    fontWeight:'bold',
+                    cursor:'pointer',
+                    display:'flex',
+                    alignItems:'center',
+                    gap:6
+                  }}
+                >
+                  🖼️ From Gallery
+                </button>
+              </div>
+
+              {/* Camera input — opens camera directly */}
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                id="animal-photo-camera"
+                onChange={handlePhotoSelect}
+                style={{display:'none'}}
+              />
+
+              {/* Gallery input — opens file picker */}
+              <input
+                type="file"
+                accept="image/*"
+                id="animal-photo-gallery"
+                onChange={handlePhotoSelect}
+                style={{display:'none'}}
+              />
+            </div>
+          )}
+        </div>
+
         <label style={labelStyle}>Breed *</label>
         <input value={form.breed} onChange={e => setForm({...form, breed: e.target.value})} placeholder="e.g. Friesian, Galla, Dorper" style={inputStyle} />
 
@@ -491,7 +647,7 @@ function LivestockModule({ myFarmer, myLivestock, reload }) {
 
         <div style={{display:'flex',gap:8,marginTop:16}}>
           <button onClick={() => setView('list')} style={{...primaryBtn, background:'#F0F0F0', color:'#666', flex:1}}>← Back</button>
-          <button onClick={submit} disabled={submitting || !form.breed || !form.location} style={{...primaryBtn, background: (form.breed && form.location && !submitting) ? '#FF6F00' : '#ccc', flex:2}}>
+          <button onClick={submit} disabled={submitting || !form.breed || !form.location || !form.photoUrl} style={{...primaryBtn, background: (form.breed && form.location && form.photoUrl && !submitting) ? '#FF6F00' : '#ccc', flex:2}}>
             {submitting ? '⏳ Saving...' : '✅ Register Animal'}
           </button>
         </div>
@@ -540,15 +696,60 @@ function LivestockModule({ myFarmer, myLivestock, reload }) {
             border: isDead ? '1px solid #EF9A9A' : isHome ? '1px solid #FFE082' : '1px solid #FFE082',
             opacity: isDead || isHome ? 0.9 : 1,
           }}>
-            <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
-              <strong style={{fontSize:13,fontFamily:'monospace'}}>{a.passportId}</strong>
-              <span style={{
-                background: isDead ? '#C62828' : isHome ? '#E65100' : a.isReportedStolen ? '#C62828' : '#2E7D32',
-                color:'white',padding:'2px 8px',borderRadius:6,fontSize:10,fontWeight:'bold'
-              }}>
-                {isDead ? '🕯️ DECEASED' : isHome ? '🏠 HOME SLAUGHTER' : a.isReportedStolen ? '🚨 STOLEN' : '✅ ALIVE'}
-              </span>
+            {/* SESSION 5A PHOTO CARD — shows animal photo */}
+            <div style={{display:'flex',gap:10,alignItems:'flex-start',marginBottom:6}}>
+              {a.photoUrl && (
+                <div style={{position:'relative', flexShrink:0, cursor:'pointer'}}
+                  onClick={() => setPhotoViewer({
+                    src: a.photoUrl,
+                    caption: `${a.passportId} · ${a.type} ${a.breed}${a.ageDisplay ? ' · ' + a.ageDisplay : ''}`,
+                  })}
+                >
+                  <img
+                    src={a.photoUrl}
+                    alt={a.passportId}
+                    style={{
+                      width:64,
+                      height:64,
+                      borderRadius:8,
+                      objectFit:'cover',
+                      border:'2px solid #E0E0E0',
+                      background:'#F5F5F5',
+                    }}
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                  />
+                  {(a.photos?.length || 1) > 1 && (
+                    <span style={{
+                      position:'absolute',
+                      bottom:4,
+                      right:4,
+                      background:'rgba(0,0,0,0.7)',
+                      color:'white',
+                      fontSize:10,
+                      padding:'2px 6px',
+                      borderRadius:10,
+                      fontWeight:'bold',
+                    }}>
+                      {a.photos.length}
+                    </span>
+                  )}
+                </div>
+              )}
+              <div style={{flex:1, minWidth:0}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:2}}>
+                  <strong style={{fontSize:13,fontFamily:'monospace'}}>{a.passportId}</strong>
+                  <span style={{
+                    background: isDead ? '#C62828' : isHome ? '#E65100' : a.isReportedStolen ? '#C62828' : '#2E7D32',
+                    color:'white',padding:'2px 8px',borderRadius:6,fontSize:10,fontWeight:'bold',
+                    flexShrink:0,
+                  }}>
+                    {isDead ? '🕯️ DECEASED' : isHome ? '🏠 HOME SLAUGHTER' : a.isReportedStolen ? '🚨 STOLEN' : '✅ ALIVE'}
+                  </span>
+                </div>
+              </div>
             </div>
+
+            {/* Rest of the card content — closes the outer flex wrapper visually */}
             <p style={{fontSize:13,margin:'2px 0'}}>
               🐄 {a.type} • {a.breed}
               {a.currentLifeStage && <span style={{marginLeft:6,background:'#E3F2FD',color:'#1565C0',padding:'1px 6px',borderRadius:4,fontSize:10,fontWeight:'bold'}}>{a.currentLifeStage}</span>}
@@ -593,6 +794,72 @@ function LivestockModule({ myFarmer, myLivestock, reload }) {
                 }}>🚨 Stolen</button>
               </div>
             )}
+
+            {/* Session 5A: Photos management */}
+            {!isDead && !a.isReportedStolen && (
+              <button
+                onClick={() => setPhotoGalleryTarget(a)}
+                style={{
+                  width:'100%',
+                  marginTop:6,
+                  background:'#E3F2FD',
+                  color:'#1565C0',
+                  border:'1px solid #90CAF9',
+                  padding:'8px',
+                  borderRadius:8,
+                  fontSize:11,
+                  cursor:'pointer',
+                  fontWeight:'bold',
+                }}
+              >
+                📸 Photos {a.photos?.length ? `(${a.photos.length})` : ''}
+              </button>
+            )}
+
+            {/* Session 5A: Transfer ownership (gift / inheritance / dowry / direct sale) */}
+            {!isDead && !isHome && !a.isReportedStolen && (
+              <button
+                onClick={() => setTransferTarget(a)}
+                style={{
+                  width:'100%',
+                  marginTop:6,
+                  background:'#FFF8E1',
+                  color:'#E65100',
+                  border:'1px solid #FFD54F',
+                  padding:'8px',
+                  borderRadius:8,
+                  fontSize:11,
+                  cursor:'pointer',
+                  fontWeight:'bold',
+                }}
+              >
+                🤝 Transfer
+              </button>
+            )}
+
+            {/* Session 5A: List for Sale / Withdraw */}
+            {!isDead && !isHome && !a.isReportedStolen && a.photoUrl && (
+              <div style={{marginTop:8}}>
+                {a.forSale && a.forSale.status === 'active' ? (
+                  <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                    <div style={{flex:1,background:'#E8F5E9',padding:'8px 10px',borderRadius:8,border:'1px solid #A5D6A7'}}>
+                      <span style={{fontSize:11,color:'#2E7D32',fontWeight:'bold'}}>
+                        ✅ Listed at KES {a.forSale.askingPrice?.toLocaleString()}
+                      </span>
+                    </div>
+                    <button onClick={() => setListTarget({ ...a, _withdraw: true })} style={{
+                      background:'#FFEBEE',color:'#C62828',border:'1px solid #EF9A9A',
+                      padding:'8px 12px',borderRadius:8,fontSize:11,cursor:'pointer',fontWeight:'bold'
+                    }}>Withdraw</button>
+                  </div>
+                ) : (
+                  <button onClick={() => setListTarget(a)} style={{
+                    width:'100%',background:'#2E7D32',color:'white',border:'none',
+                    padding:'10px',borderRadius:8,fontSize:12,cursor:'pointer',fontWeight:'bold'
+                  }}>💰 List for Sale</button>
+                )}
+              </div>
+            )}
           </div>
         );
       })}
@@ -602,6 +869,79 @@ function LivestockModule({ myFarmer, myLivestock, reload }) {
         <MeasurementGuideModal 
           onClose={() => setShowGuide(false)} 
           animalType={form.type}
+        />
+      )}
+
+      {/* SESSION 5A: LIST FOR SALE MODAL */}
+      {listTarget && !listTarget._withdraw && (
+        <ListForSaleModal
+          animal={listTarget}
+          onClose={() => setListTarget(null)}
+          onListed={async () => {
+            setListTarget(null);
+            if (reload) await reload();
+          }}
+        />
+      )}
+
+      {/* SESSION 5A: WITHDRAW CONFIRMATION */}
+      {listTarget && listTarget._withdraw && (
+        <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.7)',zIndex:600,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={() => setListTarget(null)}>
+          <div style={{background:'white',borderRadius:'20px 20px 0 0',padding:20,maxWidth:450,width:'100%'}} onClick={e => e.stopPropagation()}>
+            <h4 style={{margin:0,color:'#C62828',fontSize:16,marginBottom:8}}>⚠️ Withdraw from Sale?</h4>
+            <p style={{fontSize:12,color:'#666',lineHeight:1.5}}>
+              Your animal will be removed from the marketplace. You can list it again any time.
+            </p>
+            <div style={{display:'flex',gap:8,marginTop:16}}>
+              <button onClick={() => setListTarget(null)} style={{flex:1,padding:12,background:'#F0F0F0',color:'#666',border:'none',borderRadius:25,fontSize:14,fontWeight:'bold',cursor:'pointer'}}>Cancel</button>
+              <button onClick={async () => {
+                try {
+                  const res = await api.shamba.withdrawFromSale(listTarget.passportId, {
+                    ownerId: listTarget.ownerId,
+                    reason: 'Withdrawn by owner from app',
+                  });
+                  if (!res.success) throw new Error(res.message);
+                  setListTarget(null);
+                  if (reload) await reload();
+                } catch (err) {
+                  alert('Failed: ' + err.message);
+                }
+              }} style={{flex:1,padding:12,background:'#C62828',color:'white',border:'none',borderRadius:25,fontSize:14,fontWeight:'bold',cursor:'pointer'}}>Withdraw</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SESSION 5A PART 2: Photo viewer */}
+      {photoViewer && (
+        <PhotoViewer
+          src={photoViewer.src}
+          caption={photoViewer.caption}
+          onClose={() => setPhotoViewer(null)}
+        />
+      )}
+
+      {/* SESSION 5A PART 2: Photo gallery */}
+      {photoGalleryTarget && (
+        <PhotoGalleryModal
+          animal={photoGalleryTarget}
+          onClose={() => setPhotoGalleryTarget(null)}
+          onUpdated={async () => {
+            setPhotoGalleryTarget(null);
+            if (reload) await reload();
+          }}
+        />
+      )}
+
+      {/* Session 5A: Transfer Ownership modal */}
+      {transferTarget && (
+        <TransferOwnershipModal
+          animal={transferTarget}
+          onClose={() => setTransferTarget(null)}
+          onUpdated={async () => {
+            setTransferTarget(null);
+            if (reload) await reload();
+          }}
         />
       )}
 

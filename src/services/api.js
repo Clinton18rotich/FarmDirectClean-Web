@@ -75,6 +75,37 @@ api.shamba = {
   getLivestock: (passportId) => request(`/api/shamba/livestock/${passportId}`),
   reportStolen: (passportId, data) => request(`/api/shamba/livestock/${passportId}/report-stolen`, { method: 'POST', body: data }),
   addVaccination: (passportId, data) => request(`/api/shamba/livestock/${passportId}/vaccination`, { method: 'POST', body: data }),
+
+  // Marketplace (Session 1 backend)
+  listForSale: (passportId, data) => request(`/api/shamba/livestock/${passportId}/list-for-sale`, { method: 'POST', body: data }),
+  withdrawFromSale: (passportId, data) => request(`/api/shamba/livestock/${passportId}/withdraw-sale`, { method: 'POST', body: data }),
+  updatePhotos: (passportId, data) => request(`/api/shamba/livestock/${passportId}/photos`, { method: 'POST', body: data }),
+  transferOwnership: (passportId, data) => request(`/api/shamba/livestock/${passportId}/transfer`, { method: 'POST', body: data }),
+  saleable: (filter = {}) => {
+    const params = new URLSearchParams(filter).toString();
+    return request(`/api/shamba/livestock/saleable${params ? '?' + params : ''}`);
+  },
+};
+
+// Market — the new marketplace backend (Session 3)
+api.market = {
+  searchListings: (filter = {}) => {
+    const params = new URLSearchParams(filter).toString();
+    return request(`/api/market/listings${params ? '?' + params : ''}`);
+  },
+  getListing: (id, buyerId) => request(`/api/market/listings/${id}${buyerId ? '?buyerId=' + encodeURIComponent(buyerId) : ''}`),
+  createListing: (data) => request('/api/market/listings', { method: 'POST', body: data }),
+  pauseListing: (id, data) => request(`/api/market/listings/${id}/pause`, { method: 'POST', body: data }),
+  unlockContact: (id, data) => request(`/api/market/listings/${id}/unlock`, { method: 'POST', body: data }),
+  unlockStatus: (id, buyerId) => request(`/api/market/listings/${id}/unlock-status?buyerId=${encodeURIComponent(buyerId)}`),
+  createOffer: (data) => request('/api/market/offers', { method: 'POST', body: data }),
+  counterOffer: (id, data) => request(`/api/market/offers/${id}/counter`, { method: 'POST', body: data }),
+  acceptOffer: (id, data) => request(`/api/market/offers/${id}/accept`, { method: 'POST', body: data }),
+  rejectOffer: (id, data) => request(`/api/market/offers/${id}/reject`, { method: 'POST', body: data }),
+  myOffers: (userId) => request(`/api/market/buyer/${userId}/offers`),
+  sellerOffers: (sellerId) => request(`/api/market/seller/${sellerId}/offers`),
+  stats: () => request('/api/market/stats'),
+  config: () => request('/api/market/config'),
 };
 
 // Shamba — Death + Safety + Home Slaughter

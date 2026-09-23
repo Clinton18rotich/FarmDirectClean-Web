@@ -350,3 +350,54 @@ Verification command (run periodically):
       fi
     fi
   done
+
+## Positioning Insight (2026-09-23)
+
+Kenya does not have a public, accessible national animal registry.
+FarmDirect's livestock passport system is the first consumer-facing
+version of this infrastructure.
+
+This changes how the marketplace works:
+- Farmers MUST register animals before listing them
+- The redirect from "I want to sell livestock" → "Register your animal"
+  is not a UX choice — it's the onboarding path to the national registry
+- Every farmer who joins becomes a data point in this registry
+- When ANITRAC (gov RFID system) rolls out, FarmDirect is the consumer
+  layer already in place
+
+Marketing angle: "Kenya's first farm-level animal registry — 
+built by farmers, for farmers, before the government did it."
+
+This is a moat. Protect it.
+
+## Session 5A Plan (2026-09-23)
+
+**The vision, restated:** Farmers sell agricultural products directly
+to buyers, eliminating brokers. Everything else (passports, land,
+vet network, meat traceability) supports this.
+
+**Why animal registration matters:** Kenya has no public national
+animal registry. FarmDirect's livestock passport is the first
+consumer-facing version. Every farmer who registers becomes a data
+point in this infrastructure. When ANITRAC (gov RFID) rolls out,
+FarmDirect is the consumer layer already in place.
+
+**Session 5A scope (six items):**
+1. api.shamba.listForSale / withdrawFromSale / saleable / updatePhotos
+2. Photo upload on Register Animal form (gallery method)
+3. "List for Sale" button + modal on animal card
+4. Marketplace Livestock tab → new backend (/api/market/listings)
+5. Farmer Register → "Livestock" redirects to ShambaSafi
+6. "Your Farm" pulls real data from /api/shamba/livestock/owner/:id
+
+**Marketplace filter behavior:** Livestock tab shows all livestock,
+with a Type sub-filter (Cow/Goat/Sheep/Pig/Chicken/Camel/Donkey/Rabbit).
+
+**The demo that proves FarmDirect works:**
+Farmer registers a cow with photo → lists at KES 85,000 →
+hotel in Nairobi sees listing → unlocks contact (KES 100) →
+makes offer → farmer accepts → escrow holds → rider delivers →
+buyer releases → ownership transfers → both rate.
+
+Everything in that flow is already built on the backend (Sessions 1-4).
+Session 5A makes it visible in the UI.

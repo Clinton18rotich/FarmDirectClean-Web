@@ -103,6 +103,7 @@ export default function FarmerRegister({ onClose, onRegister }) {
 
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('Cereals');
+  const [showLivestockRedirect, setShowLivestockRedirect] = useState(false);
 
   const toggleProduct = (product) => {
     const exists = selectedProducts.find(p => p.name === product.name);
@@ -173,6 +174,57 @@ export default function FarmerRegister({ onClose, onRegister }) {
 
   return (
     <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',zIndex:500,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={onClose}>
+
+      {/* Session 5A: Livestock redirect modal */}
+      {showLivestockRedirect && (
+        <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.75)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:16}} onClick={() => setShowLivestockRedirect(false)}>
+          <div style={{background:'white',borderRadius:20,padding:24,maxWidth:440,width:'100%'}} onClick={e => e.stopPropagation()}>
+            <div style={{textAlign:'center',marginBottom:16}}>
+              <span style={{fontSize:56}}>🐄</span>
+            </div>
+            <h3 style={{margin:0,color:'#2E7D32',fontSize:18,textAlign:'center'}}>Kenya's First Animal Registry</h3>
+            <p style={{fontSize:12,color:'#666',margin:'8px 0 0',textAlign:'center',lineHeight:1.5}}>
+              Kenya has no public registry of livestock ownership. FarmDirect is building one — one farmer, one animal at a time.
+            </p>
+
+            <div style={{background:'#E8F5E9',padding:14,borderRadius:12,marginTop:16,border:'1px solid #A5D6A7'}}>
+              <strong style={{fontSize:12,color:'#1B5E20'}}>Every animal needs a passport</strong>
+              <ul style={{margin:'6px 0 0',paddingLeft:18,fontSize:11,color:'#2E7D32',lineHeight:1.6}}>
+                <li>📸 Photo (anti-theft proof)</li>
+                <li>🏥 Health records + vet history</li>
+                <li>👤 Ownership trail</li>
+                <li>🚨 Theft reporting + alerts</li>
+              </ul>
+            </div>
+
+            <div style={{background:'#FFF3E0',padding:12,borderRadius:10,marginTop:12,border:'1px solid #FFB74D'}}>
+              <p style={{fontSize:11,color:'#E65100',margin:0,lineHeight:1.5}}>
+                <strong>This is what makes buyers trust you.</strong> Animals with passports sell faster and at better prices.
+              </p>
+            </div>
+
+            <button onClick={() => {
+              // Close this modal, then trigger the ShambaSafi module open
+              // We'll dispatch a custom event that App.jsx listens for
+              setShowLivestockRedirect(false);
+              window.dispatchEvent(new CustomEvent('openShambaSafi', { detail: { module: 'livestock' } }));
+            }} style={{
+              width:'100%',padding:14,background:'#2E7D32',color:'white',
+              border:'none',borderRadius:25,fontSize:14,fontWeight:'bold',cursor:'pointer',marginTop:16
+            }}>
+              🐄 Register My First Animal
+            </button>
+
+            <button onClick={() => setShowLivestockRedirect(false)} style={{
+              width:'100%',padding:12,background:'none',border:'none',
+              color:'#666',fontSize:13,cursor:'pointer',marginTop:4
+            }}>
+              I'll do this later
+            </button>
+          </div>
+        </div>
+      )}
+
       <div style={{background:'white',borderRadius:'20px 20px 0 0',padding:20,maxWidth:450,width:'100%',maxHeight:'92vh',overflowY:'auto'}} onClick={e => e.stopPropagation()}>
 
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
@@ -333,7 +385,13 @@ export default function FarmerRegister({ onClose, onRegister }) {
 
             <div style={{display:'flex',gap:6,overflowX:'auto',paddingBottom:8,marginBottom:12,borderBottom:'1px solid #eee'}}>
               {ALL_CATEGORIES.map(cat => (
-                <button key={cat} onClick={() => setSelectedCategory(cat)} style={{
+                <button key={cat} onClick={() => {
+                    if (cat === 'Livestock') {
+                      setShowLivestockRedirect(true);
+                    } else {
+                      setSelectedCategory(cat);
+                    }
+                  }} style={{
                   padding:'8px 14px', borderRadius:16, border:'none',
                   background: selectedCategory===cat ? '#4CAF50' : '#F0F0F0',
                   color: selectedCategory===cat ? 'white' : '#555',

@@ -37,3 +37,4 @@ start-tunnel.sh
 *.broken
 *.pre-marketplace
 backend/test-*.js
+.session5a-backup/
