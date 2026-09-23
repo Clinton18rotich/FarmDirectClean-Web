@@ -4,6 +4,7 @@ import EconomyScreen from "./pages/EconomyScreen";
 import ChatScreen from "./pages/ChatScreen";
 import FarmerRegister from "./components/FarmerRegister";
 import ShambaSafi from "./components/ShambaSafi";
+import ErrorBoundary from "./components/ErrorBoundary";
 import Checkout from "./components/Checkout";
 import MarketplaceScreen from "./components/MarketplaceScreen";
 import TradeCheckout from "./components/TradeCheckout";
@@ -522,7 +523,7 @@ export default function App() {
       )}
 
       {!selectedFarmer && <button onClick={() => setShowShamba(true)} style={{position:"fixed",bottom:80,right:16,background:"#FF6F00",color:"white",border:"none",width:56,height:56,borderRadius:"50%",fontSize:28,cursor:"pointer",boxShadow:"0 4px 15px rgba(0,0,0,.3)",zIndex:99}}>🛡️</button>}
-      {showShamba && <ShambaSafi onClose={() => setShowShamba(false)} onBrowseMarketplace={() => { setShowShamba(false); setShowMarketplace(true); }} />}
+      {showShamba && <ErrorBoundary><ShambaSafi onClose={() => setShowShamba(false)} onBrowseMarketplace={() => { setShowShamba(false); setShowMarketplace(true); }} /></ErrorBoundary>}
       {showRegister && <FarmerRegister onClose={() => setShowRegister(false)} onRegister={handleFarmerRegistered} />}
 
       {!selectedFarmer && (

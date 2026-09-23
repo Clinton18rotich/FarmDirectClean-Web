@@ -125,7 +125,7 @@ export default function ShambaSafi({ onClose, onBrowseMarketplace }) {
             <button onClick={() => setActiveModule(null)} style={{background:'none',border:'none',color:'#4CAF50',fontWeight:'bold',cursor:'pointer',marginBottom:8,fontSize:14}}>← Back to Modules</button>
 
             {activeModule === 'land' && <LandModule myFarmer={myFarmer} myLand={myLand} reload={loadAll} />}
-            {activeModule === 'livestock' && <LivestockModule myFarmer={myFarmer} myLivestock={myLivestock} reload={loadAll} />}
+            {activeModule === 'livestock' && <LivestockModule myFarmer={myFarmer} myLivestock={myLivestock} reload={loadAll} onBrowseMarketplace={onBrowseMarketplace} />}
             {activeModule === 'health' && <VetModule />}
             {activeModule === 'meat' && <VerifyMeatView onBack={() => setActiveModule(null)} />}
             {activeModule === 'slaughterhouse' && <SlaughterhouseModule />}
@@ -243,7 +243,7 @@ function LandModule({ myFarmer, myLand, reload }) {
 // ═══════════════════════════════════════════════════
 // LIVESTOCK MODULE (UPDATED)
 // ═══════════════════════════════════════════════════
-function LivestockModule({ myFarmer, myLivestock, reload }) {
+function LivestockModule({ myFarmer, myLivestock, reload, onBrowseMarketplace }) {
   const [view, setView] = useState('list');
 
   // Session 5A: List for sale
