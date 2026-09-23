@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import MyOffersTab from './MyOffersTab';
 import SellingTab from './SellingTab';
+import ListingDetailScreen from './ListingDetailScreen';
 
 const inputStyle = { width:'100%', padding:'10px 12px', borderRadius:10, border:'2px solid #E0E0E0', fontSize:14, marginBottom:6, boxSizing:'border-box', fontFamily:'inherit', color:'#333' };
 const labelStyle = { fontSize:11, fontWeight:'bold', color:'#555', display:'block', marginBottom:4 };
@@ -28,6 +29,7 @@ export default function MarketplaceScreen({ currentFarmer, onClose, onOpenListin
   const [filters, setFilters] = useState({ type: '', county: '', minPrice: '', maxPrice: '', sort: '' });
   const [showFilters, setShowFilters] = useState(false);
   const [listings, setListings] = useState([]);
+  const [selectedListingId, setSelectedListingId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -90,10 +92,18 @@ export default function MarketplaceScreen({ currentFarmer, onClose, onOpenListin
 
       {/* Body */}
       <div style={{ flex:1, overflowY:'auto', padding:14 }}>
-        {tab === 'browse' && <BrowseTab {...{ filters, setFilters, showFilters, setShowFilters, activeFilterCount, clearFilters, listings, loading, error, loadListings, onOpenListing, formatPrice }} />}
+        {tab === 'browse' && <BrowseTab {...{ filters, setFilters, showFilters, setShowFilters, activeFilterCount, clearFilters, listings, loading, error, loadListings, onOpenListing: (id) => setSelectedListingId(id), formatPrice }} />}
         {tab === 'offers' && <MyOffersTab currentFarmer={currentFarmer} onOpenListing={onOpenListing} />}
         {tab === 'selling' && <SellingTab currentFarmer={currentFarmer} onOpenListing={onOpenListing} />}
       </div>
+
+      {selectedListingId && (
+        <ListingDetailScreen
+          listingId={selectedListingId}
+          currentFarmer={currentFarmer}
+          onClose={() => { setSelectedListingId(null); loadListings(); }}
+        />
+      )}
     </div>
   );
 }
