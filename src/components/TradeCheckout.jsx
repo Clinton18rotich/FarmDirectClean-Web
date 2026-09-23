@@ -43,7 +43,11 @@ export default function TradeCheckout({ offer, currentFarmer, onClose, onTrack }
     pollRef.current = setInterval(async () => {
       try {
         const res = await api.trades.get(tradeId);
-        if (res.success && res.trade && (res.trade.status === 'funded' || res.trade.status === 'in_transit' || res.trade.status === 'delivered' || res.trade.status === 'completed')) {
+        const FUNDED_OR_LATER = [
+          'funded','matching_rider','rider_assigned','awaiting_release',
+          'releasing','completed','no_rider_available','disputed','failed'
+        ];
+        if (res.success && res.trade && FUNDED_OR_LATER.includes(res.trade.status)) {
           stopPolling();
           setTrade(res.trade);
           setStep('success');
@@ -92,7 +96,7 @@ export default function TradeCheckout({ offer, currentFarmer, onClose, onTrack }
       if (res.trade) setTrade(res.trade);
 
       // If already funded server-side (simulated path), skip polling
-      if (res.trade && (res.trade.status === 'funded' || res.trade.status === 'in_transit')) {
+      if (res.trade && ['funded','matching_rider','rider_assigned','awaiting_release','releasing','completed','no_rider_available'].includes(res.trade.status)) {
         setStep('success');
         return;
       }

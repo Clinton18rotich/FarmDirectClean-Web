@@ -811,7 +811,36 @@ function listAwaitingPayment() {
   return out;
 }
 
+
+// DEV ONLY — flip a no_rider_available trade straight to awaiting_release
+// so the buyer can enter the release code and complete the trade without
+// a real rider. Gated by NODE_ENV check in the route.
+async function devSkipRiderToRelease(tradeId) {
+  const trade = trades.get(tradeId);
+  if (!trade) return { error: 'Trade not found' };
+  if (trade.status !== 'no_rider_available' && trade.status !== 'matching_rider') {
+    return { error: 'Trade is not in a skippable state (status: ' + trade.status + ')' };
+  }
+  const now = new Date().toISOString();
+  trade.delivery = trade.delivery || {};
+  trade.delivery.status = 'delivered';
+  trade.delivery.deliveredAt = now;
+  trade.delivery.buyerConfirmedAt = now;
+  trade.delivery.devSkippedRider = true;
+  trade.status = 'awaiting_release';
+  trade.history = trade.history || [];
+  trade.history.push({
+    at: now,
+    event: 'delivery_completed',
+    by: 'system',
+    note: 'DEV: rider skipped, marked as delivered',
+  });
+  persist();
+  return { trade };
+}
+
 module.exports = {
+  devSkipRiderToRelease,
   // Core
   createTrade,
   fundTrade,

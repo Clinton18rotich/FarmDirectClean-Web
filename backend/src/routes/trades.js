@@ -150,6 +150,20 @@ router.post('/:id/match-rider', async (req, res) => {
   }
 });
 
+// DEV ONLY — skip rider and jump to awaiting_release
+router.post('/:id/dev-skip-rider', async (req, res) => {
+  try {
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(403).json({ success: false, message: 'Not available in production' });
+    }
+    const result = await trades.devSkipRiderToRelease(req.params.id);
+    if (result.error) return res.status(400).json({ success: false, message: result.error });
+    res.json({ success: true, trade: result.trade });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
 // ═══════════════════════════════════════════════════════
 // QUERIES
 // ═══════════════════════════════════════════════════════
