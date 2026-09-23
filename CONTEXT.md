@@ -147,50 +147,69 @@ Inside `src/components/ShambaSafi.jsx` (2043 lines):
 
 ## Current State — Where We Left Off
 
-**Session 5A COMPLETE — shipped 2026-09-23**
+**Session 5A + 5B COMPLETE — shipped 2026-09-24**
 
-Commits:
-- `424e516` 📸 Session 5A: Photos, photo gallery, list-for-sale, transfer ownership
+Session 5A commits:
+- `424e516` 📸 Photos, photo gallery, list-for-sale, transfer ownership
 - `50d2d26` 🧹 Trim whitespace on names, phones, age tags
 
-Both pushed to origin/master. Local + remote in sync. Build clean.
+Session 5B commits (17 commits, `a8d0303` through `cda1c86`):
+- MarketplaceScreen (3-tab shell: Browse / My Offers / Selling)
+- ListingDetailScreen (passport view, ownership history, seller card)
+- UnlockContactModal (KES 100 STK + dev bypass + polling)
+- MakeOfferModal (quick-adjust % + note + phone)
+- MyOffersTab (buyer's offers, withdraw, track)
+- SellingTab (listings + incoming offers, accept/counter/reject)
+- TradeCheckout (escrow review + fund + poll, handles "already exists")
+- TradeTrackingScreen (role-aware timeline, release code, actions)
+- ReleaseCodeModal (4-digit PIN entry, attempt tracking, lockout)
+- RiderJobPipeline (active/completed jobs, accept/mark delivered)
+- ErrorBoundary (catches render errors, shows on-screen)
+- Backend fixes: seller listings return status/sellerId, dup-listing
+  prevention, dev-skip-rider route, trade object on error response
 
-**Landed in Session 5A:**
-- Photo upload (camera + gallery), auto-resize to 800px @ 60%
-- Photo required at registration; PhotoViewer full-screen on card tap
-- PhotoGalleryModal with auto-save on every add/delete (no Save button)
-- Age tags on photos persisted as { url, age, addedAt } objects
-- ListForSaleModal + 💰 List for Sale / Withdraw buttons
-- TransferOwnershipModal (gift/inheritance/dowry/direct sale)
-- 🤝 Transfer button on animal card
-- Backend: POST /api/shamba/livestock/:id/transfer
-- Backend: transferOwnership() service + 30-day frozenUntil lock
-- Backend: photo normalizer (upgrades legacy string URLs to objects)
+All pushed to origin/master. Local + remote in sync. Build clean.
 
-**Verified end-to-end via Android Chrome + curl.**
+**Verified end-to-end via Android Chrome:**
+1. Home → Browse → Marketplace
+2. Browse listings → tap card → ListingDetailScreen
+3. Unlock contact (KES 100 STK + dev bypass) → CTA flips to Make Offer
+4. Make Offer → My Offers tab shows ⏳ Pending
+5. Selling tab shows incoming offer with Accept/Counter/Reject
+6. Accept → offer flips to ✅ Accepted → Proceed to Escrow CTA
+7. TradeCheckout → Create trade → Fund escrow (simulated)
+8. TradeTracking → release code 4695 displayed → Enter Release Code
+9. ReleaseCodeModal → enter 4695 → 🎉 Escrow Released
+10. Trade status `completed`, 8 history events logged end-to-end
+
+**Total shipped:** ~1,400 lines of frontend across 9 new components
++ ~15 backend fixes, all committed and tested.
 
 ## What's Missing (Priority Order)
 
-1. **Session 5B — Buyer Marketplace UI** (~800-1000 lines, 8 screens):
-   - MarketplaceScreen (browse listings + filters)
-   - ListingDetailScreen (view passport + animal)
-   - UnlockContactModal (KES 100 STK)
-   - MakeOfferModal (buyer offer)
-   - SellerOffersInbox (counter/reject)
-   - Checkout rebuild (api.trades.create + api.trades.fund)
-   - TradeTrackingScreen (live status)
-   - ReleaseCodeModal (4-digit escrow release)
-   - RiderJobPipeline (rider assigned jobs)
-   All backend exists in market.js + trades.js. Frontend is the gap.
+1. **Session 5C — Real eConfirm escrow** — blocked on eConfirm API reply.
+   Currently everything runs with simulated escrow (mode='simulated').
+   When they reply: swap mpesa.stkPush + econfirm.createEscrow/release.
+   Zero UI changes needed — backend client only.
 
-2. **Session 5C — Real eConfirm escrow** — blocked on eConfirm API reply
+2. **Session 6 — Livestock inheritance** — reuses `transferOwnership()`
+   with `reason='inheritance'`. Backend + UI both straightforward now
+   that transfer flow is proven.
 
-3. **Session 6 — Livestock inheritance** — reuses transferOwnership with reason='inheritance'
+3. **Home 'Livestock' tab gap** — Home grid reads only from
+   /api/farmer/list (produce). Selecting "Livestock" filter shows 0
+   even when livestock listings exist. Either merge data sources or
+   add "See livestock on Marketplace" CTA.
 
-4. **Real integrations**: Africa's Talking SMS, Didit KYC, M-Pesa production
-   (all blocked on company registration / paybill)
+4. **My Trades screen** — currently no persistent way to see all trades.
+   Tracking screens are only reachable via specific offers. Add a
+   "Trades" section to MarketplaceScreen or bottom-nav.
 
-5. **Android port** (4-6 hrs): port entire backend + frontend to FarmDirect Android repo
+5. **Real integrations**: Africa's Talking SMS, Didit KYC, M-Pesa
+   production (all blocked on company registration / paybill)
+
+6. **Android port** (4-6 hrs): port entire backend + frontend to
+   FarmDirect Android repo
 
 ## How To Resume in a New Chat
 
@@ -491,3 +510,84 @@ CONTEXT or a dev-only README section.
 Vite warns `Some chunks are larger than 500 kB after minification`
 (~570 kB main bundle). Pre-existing, cosmetic. Fix with dynamic
 imports / code-splitting in a future session.
+
+## Session 5B — Bugs Found & Fixed (2026-09-24)
+
+### 🐛 Search listings stripped status/sellerId from response
+`market.searchListings` returns a curated item shape (id, passportId,
+askingPrice, views, animal basics) — but omitting `status` caused
+SellingTab's `listings.filter(l => l.status === 'active')` to filter
+EVERYTHING out. Symptom: "0 listings" in Selling tab.
+
+**Fix `cda1c86`:** add `sellerId`, `sellerName`, `status` to the
+returned item shape. Frontend filter also made tolerant of missing
+status.
+
+### 🐛 Duplicate listing created when user taps List for Sale twice
+No backend check prevented two active listings for the same passport
++ seller. **Fix `cda1c86`:** `createListing` now rejects if an active
+listing already exists for the same passportId + sellerId.
+
+### 🐛 TradeCheckout 90s false timeout on simulated funding
+Poll logic only accepted `funded`/`in_transit`/`delivered`/`completed`.
+But fundTrade returns `matching_rider` (successful funding → matching).
+Modal would spin for 90s then show timeout.
+
+**Fix `28cd7a7`:** `FUNDED_OR_LATER` array treats any post-funding
+status as success: matching_rider, rider_assigned, awaiting_release,
+releasing, completed, no_rider_available, disputed, failed.
+
+### 🐛 TradeCheckout stuck when trade already exists
+After the first checkout attempt, second tap on "Proceed to Escrow"
+hit "Trade already exists" but had no escape route — modal just showed
+the error.
+
+**Fix `cda1c86`:** backend now passes `trade` object on error; frontend
+detects the "already exists" case and calls `onTrack(trade.id)` to
+jump straight to tracking screen.
+
+### 🐛 Timeline highlighted stage 1 on completed trades
+`STAGES.findIndex(s => s.statuses.includes(status))` returns the first
+match. Since `completed` appears in every stage's statuses array, the
+timeline always showed stage 1 highlighted.
+
+**Fix `cda1c86` (5B-14):** walk backwards through STAGES to find the
+LAST matching stage.
+
+### 🔴 DEV GOTCHA — `pkill -9 -f 'node src/server.js'` misses processes
+Servers started with `cd backend && node src/server.js` don't match
+the exact-pattern pkill. Four stale servers were racing for port 3001,
+curls hit the oldest (pre-fix code), and fixes appeared "not to work."
+
+**Always use `pkill -9 -f 'server.js'`** (broader pattern, catches all
+paths ending in server.js). Same class of issue as the multi-Vite
+port confusion.
+
+### 🟡 `no_rider_available` is a dead-end for testing
+The only registered rider has null vehicleClass/online → matching
+never succeeds → trades stuck. Added `/api/trades/:id/dev-skip-rider`
+(dev-only, gated by NODE_ENV) to flip status to awaiting_release so
+the release flow can be tested.
+
+### 🟡 ErrorBoundary now permanent
+Wrapped around ShambaSafi in App.jsx. Caught the `onBrowseMarketplace`
+ReferenceError that would have been a white-screen debug session
+otherwise. Consider wrapping MarketplaceScreen, TradeTrackingScreen,
+and other heavy components too.
+
+### 🟡 Backend releaseCode visible to anyone who fetches trade
+Trade object exposes `releaseCode` in API responses. UI hides it
+from non-buyers, but API should mask server-side. **Future:**
+in `/trades/:id` route, strip `releaseCode` unless `req.query.buyerId
+=== trade.buyerId`.
+
+### 🟡 `.pre-*` backup files accumulating in src/components/
+`FarmerRegister.jsx.pre-block3i`, `PhotoGalleryModal.jsx.pre-block3f`,
+`PhotoGalleryModal.jsx.pre-block3i`, `ShambaSafi.jsx.pre-block3e`,
+`ShambaSafi.jsx.pre-payment-sheet`, `ShambaSafi.jsx.pre-5b10d-fix`,
+etc. Already in .gitignore, but clutter `ls`. Clean up in a future
+session: `rm src/components/*.pre-*`.
+
+### 🟡 App.jsx `checkoutTrade` state now redundant
+MarketplaceScreen owns its own `checkoutOffer` state (5B-10f), so
+App.jsx's `checkoutTrade` + render is dormant. Remove in cleanup.
