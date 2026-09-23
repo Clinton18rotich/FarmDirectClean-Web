@@ -17,7 +17,7 @@ const inputStyle = { width:'100%', padding:'14px 16px', borderRadius:10, border:
 const labelStyle = { fontSize:12, fontWeight:'bold', color:'#555', display:'block', marginBottom:4, marginTop:8 };
 const primaryBtn = { width:'100%', padding:16, color:'white', border:'none', borderRadius:25, fontSize:16, fontWeight:'bold', cursor:'pointer', marginTop:8, boxSizing:'border-box' };
 
-export default function ShambaSafi({ onClose }) {
+export default function ShambaSafi({ onClose, onBrowseMarketplace }) {
   const [activeModule, setActiveModule] = useState(null);
   const [myFarmer, setMyFarmer] = useState(null);
   const [myLand, setMyLand] = useState([]);
@@ -668,6 +668,10 @@ function LivestockModule({ myFarmer, myLivestock, reload }) {
     <div>
       <h4 style={{fontSize:16,marginBottom:8}}>🐄 My Animals</h4>
       <button onClick={() => setView('form')} style={{...primaryBtn, background:'#FF6F00', marginBottom:12}}>+ Register New Animal</button>
+
+      {onBrowseMarketplace && (
+        <button onClick={onBrowseMarketplace} style={{...primaryBtn, background:'white', color:'#2E7D32', border:'2px solid #2E7D32', marginBottom:12}}>🛒 Browse Marketplace</button>
+      )}
 
       {/* Tabs */}
       <div style={{display:'flex',gap:6,marginBottom:12,borderBottom:'1px solid #E0E0E0',paddingBottom:8}}>
