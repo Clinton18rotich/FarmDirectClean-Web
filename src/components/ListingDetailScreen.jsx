@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import PhotoViewer from './PhotoViewer';
+import UnlockContactModal from './UnlockContactModal';
+import MakeOfferModal from './MakeOfferModal';
 
 const card = { background:'white', border:'1px solid #E0E0E0', borderRadius:12, padding:14, marginBottom:12 };
 const sectionTitle = { fontSize:12, fontWeight:'bold', color:'#555', margin:'0 0 8px', textTransform:'uppercase', letterSpacing:0.5 };
@@ -15,6 +17,8 @@ export default function ListingDetailScreen({ listingId, currentFarmer, onClose,
   const [error, setError] = useState(null);
   const [photoViewer, setPhotoViewer] = useState(null);
   const [activePhoto, setActivePhoto] = useState(0);
+  const [showUnlock, setShowUnlock] = useState(false);
+  const [showOffer, setShowOffer] = useState(false);
 
   const buyerId = currentFarmer?.id || null;
 
@@ -210,7 +214,7 @@ export default function ListingDetailScreen({ listingId, currentFarmer, onClose,
               </p>
             </div>
             <button
-              onClick={() => onUnlock && onUnlock(listing.id, () => load())}
+              onClick={() => setShowUnlock(true)}
               style={{ ...primaryBtn, background:'#1976D2' }}
             >
               🔓 Unlock Contact — KES 100
@@ -220,7 +224,7 @@ export default function ListingDetailScreen({ listingId, currentFarmer, onClose,
 
         {isListable && isUnlocked && (
           <button
-            onClick={() => onMakeOffer && onMakeOffer(listing, () => load())}
+            onClick={() => setShowOffer(true)}
             style={{ ...primaryBtn, background:'#2E7D32' }}
           >
             📨 Make Offer
@@ -234,6 +238,23 @@ export default function ListingDetailScreen({ listingId, currentFarmer, onClose,
           ← Back to Marketplace
         </button>
       </div>
+
+      {showUnlock && (
+        <UnlockContactModal
+          listingId={listing.id}
+          currentFarmer={currentFarmer}
+          onClose={() => setShowUnlock(false)}
+          onSuccess={() => { load(); }}
+        />
+      )}
+      {showOffer && (
+        <MakeOfferModal
+          listing={{ ...listing, ...animal }}
+          currentFarmer={currentFarmer}
+          onClose={() => setShowOffer(false)}
+          onSuccess={() => { load(); }}
+        />
+      )}
 
       {photoViewer && (
         <PhotoViewer
