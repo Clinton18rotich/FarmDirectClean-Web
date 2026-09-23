@@ -87,27 +87,6 @@ api.shamba = {
   },
 };
 
-// Market — the new marketplace backend (Session 3)
-api.market = {
-  searchListings: (filter = {}) => {
-    const params = new URLSearchParams(filter).toString();
-    return request(`/api/market/listings${params ? '?' + params : ''}`);
-  },
-  getListing: (id, buyerId) => request(`/api/market/listings/${id}${buyerId ? '?buyerId=' + encodeURIComponent(buyerId) : ''}`),
-  createListing: (data) => request('/api/market/listings', { method: 'POST', body: data }),
-  pauseListing: (id, data) => request(`/api/market/listings/${id}/pause`, { method: 'POST', body: data }),
-  unlockContact: (id, data) => request(`/api/market/listings/${id}/unlock`, { method: 'POST', body: data }),
-  unlockStatus: (id, buyerId) => request(`/api/market/listings/${id}/unlock-status?buyerId=${encodeURIComponent(buyerId)}`),
-  createOffer: (data) => request('/api/market/offers', { method: 'POST', body: data }),
-  counterOffer: (id, data) => request(`/api/market/offers/${id}/counter`, { method: 'POST', body: data }),
-  acceptOffer: (id, data) => request(`/api/market/offers/${id}/accept`, { method: 'POST', body: data }),
-  rejectOffer: (id, data) => request(`/api/market/offers/${id}/reject`, { method: 'POST', body: data }),
-  myOffers: (userId) => request(`/api/market/buyer/${userId}/offers`),
-  sellerOffers: (sellerId) => request(`/api/market/seller/${sellerId}/offers`),
-  stats: () => request('/api/market/stats'),
-  config: () => request('/api/market/config'),
-};
-
 // Shamba — Death + Safety + Home Slaughter
 api.shamba.deathCauses = () => request('/api/shamba/death-causes');
 api.shamba.reportDeath = (passportId, data) => request(`/api/shamba/livestock/${passportId}/death`, { method: 'POST', body: data });
@@ -358,6 +337,7 @@ api.market = {
   getOffer: (id) => request(`/api/market/offers/${id}`),
   listingOffers: (id) => request(`/api/market/listings/${id}/offers`),
   buyerOffers: (buyerId) => request(`/api/market/buyer/${buyerId}/offers`),
+  myOffers: (userId) => request(`/api/market/buyer/${userId}/offers`),  // alias of buyerOffers
   sellerOffers: (sellerId) => request(`/api/market/seller/${sellerId}/offers`),
 
   // Stats
