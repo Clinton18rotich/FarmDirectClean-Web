@@ -133,11 +133,11 @@ export default function FarmerRegister({ onClose, onRegister }) {
     try {
       const registration = {
         farmer: {
-          fullName: farmer.fullName,
-          phone: farmer.phone,
-          email: farmer.email,
+          fullName: (farmer.fullName || '').trim(),
+          phone: (farmer.phone || '').trim(),
+          email: (farmer.email || '').trim(),
           location: farmer.location,
-          farmName: farmer.farmName,
+          farmName: (farmer.farmName || '').trim(),
           deliveryAvailable: farmer.deliveryAvailable,
           deliveryFee: farmer.deliveryFee,
           additionalInfo: farmer.additionalInfo,

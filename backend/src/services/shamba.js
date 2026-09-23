@@ -53,7 +53,7 @@ function registerLand(data) {
   const parcel = {
     id,
     ownerId: data.ownerId,
-    ownerName: data.ownerName,
+    ownerName: (data.ownerName || '').trim(),
     ownerPhone: data.ownerPhone,
     // Location (from LocationPicker)
     location: data.location,
@@ -418,7 +418,7 @@ function registerLivestock(data) {
   const animal = {
     passportId,
     ownerId: data.ownerId,
-    ownerName: data.ownerName,
+    ownerName: (data.ownerName || '').trim(),
     ownerPhone: data.ownerPhone,
     // Animal details
     type: data.type,
@@ -2147,6 +2147,8 @@ function transferOwnership(passportId, {
       if (!w || !w.name || !w.phone) {
         return { error: 'Each witness needs name and phone' };
       }
+      w.name = String(w.name).trim();
+      w.phone = String(w.phone).trim();
     }
   } else if (witnesses && !Array.isArray(witnesses)) {
     return { error: 'witnesses must be an array' };
@@ -2174,7 +2176,7 @@ function transferOwnership(passportId, {
   });
 
   animal.ownerId = newOwnerId;
-  animal.ownerName = toOwnerName;
+  animal.ownerName = (toOwnerName || '').trim();
   if (toOwnerPhone) animal.ownerPhone = toOwnerPhone;
 
   if (animal.forSale) {

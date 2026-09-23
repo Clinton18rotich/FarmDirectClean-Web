@@ -54,7 +54,7 @@ export default function PhotoGalleryModal({ animal, onClose, onUpdated }) {
     if (!file || saving) return;
     try {
       const resized = await resizeImageFile(file, { maxDim: 800, quality: 0.6 });
-      const newEntry = { url: resized, age: ageLabel || null, addedAt: new Date().toISOString() };
+      const newEntry = { url: resized, age: (ageLabel || '').trim() || null, addedAt: new Date().toISOString() };
       const next = [...photos, newEntry];
       const prev = photos;
       setPhotos(next);
