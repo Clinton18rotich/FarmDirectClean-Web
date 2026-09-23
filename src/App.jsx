@@ -522,7 +522,7 @@ export default function App() {
       )}
 
       {!selectedFarmer && <button onClick={() => setShowShamba(true)} style={{position:"fixed",bottom:80,right:16,background:"#FF6F00",color:"white",border:"none",width:56,height:56,borderRadius:"50%",fontSize:28,cursor:"pointer",boxShadow:"0 4px 15px rgba(0,0,0,.3)",zIndex:99}}>🛡️</button>}
-      {showShamba && <ShambaSafi onClose={() => setShowShamba(false)} />}
+      {showShamba && <ShambaSafi onClose={() => setShowShamba(false)} onBrowseMarketplace={() => { setShowShamba(false); setShowMarketplace(true); }} />}
       {showRegister && <FarmerRegister onClose={() => setShowRegister(false)} onRegister={handleFarmerRegistered} />}
 
       {!selectedFarmer && (
