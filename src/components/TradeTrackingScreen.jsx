@@ -231,7 +231,12 @@ export default function TradeTrackingScreen({ tradeId, currentFarmer, onClose, o
 
 function Timeline({ trade }) {
   const status = trade.status;
-  const currentStageIdx = STAGES.findIndex(s => s.statuses.includes(status));
+  // Take the LAST matching stage — terminal statuses like 'completed' appear
+  // in every stage's status list, so we walk backwards to find the furthest one.
+  let currentStageIdx = -1;
+  for (let i = STAGES.length - 1; i >= 0; i--) {
+    if (STAGES[i].statuses.includes(status)) { currentStageIdx = i; break; }
+  }
 
   return (
     <div>
