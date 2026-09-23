@@ -491,6 +491,7 @@ export default function App() {
           currentFarmer={myFarmer?.farmer ? { id: myFarmer.farmer.phone, fullName: myFarmer.farmer.fullName, phone: myFarmer.farmer.phone } : null}
           onClose={() => setShowMarketplace(false)}
           onOpenListing={() => {}}
+          onTrackTrade={(tradeId) => { setShowMarketplace(false); setTrackingTradeId(tradeId); }}
         />
       )}
 

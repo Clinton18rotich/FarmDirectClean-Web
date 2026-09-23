@@ -130,7 +130,8 @@ export default function SellingTab({ currentFarmer, onOpenListing }) {
     );
   }
 
-  const activeListings = listings.filter(l => l.status === 'active' || l.status === 'paused');
+  // sellerListings already returns only this seller's listings; status filter is defensive
+  const activeListings = listings.filter(l => !l.status || l.status === 'active' || l.status === 'paused');
   const activeOffers = offers.filter(o => o.status === 'pending' || o.status === 'countered');
 
   return (

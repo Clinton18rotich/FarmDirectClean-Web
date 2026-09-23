@@ -5,6 +5,7 @@ import { api } from '../services/api';
 import MyOffersTab from './MyOffersTab';
 import SellingTab from './SellingTab';
 import ListingDetailScreen from './ListingDetailScreen';
+import TradeCheckout from './TradeCheckout';
 
 const inputStyle = { width:'100%', padding:'10px 12px', borderRadius:10, border:'2px solid #E0E0E0', fontSize:14, marginBottom:6, boxSizing:'border-box', fontFamily:'inherit', color:'#333' };
 const labelStyle = { fontSize:11, fontWeight:'bold', color:'#555', display:'block', marginBottom:4 };
@@ -24,12 +25,13 @@ const TABS = [
   { id: 'selling', label: '🏷️ Selling' },
 ];
 
-export default function MarketplaceScreen({ currentFarmer, onClose, onOpenListing }) {
+export default function MarketplaceScreen({ currentFarmer, onClose, onOpenListing, onTrackTrade }) {
   const [tab, setTab] = useState('browse');
   const [filters, setFilters] = useState({ type: '', county: '', minPrice: '', maxPrice: '', sort: '' });
   const [showFilters, setShowFilters] = useState(false);
   const [listings, setListings] = useState([]);
   const [selectedListingId, setSelectedListingId] = useState(null);
+  const [checkoutOffer, setCheckoutOffer] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -93,7 +95,7 @@ export default function MarketplaceScreen({ currentFarmer, onClose, onOpenListin
       {/* Body */}
       <div style={{ flex:1, overflowY:'auto', padding:14 }}>
         {tab === 'browse' && <BrowseTab {...{ filters, setFilters, showFilters, setShowFilters, activeFilterCount, clearFilters, listings, loading, error, loadListings, onOpenListing: (id) => setSelectedListingId(id), formatPrice }} />}
-        {tab === 'offers' && <MyOffersTab currentFarmer={currentFarmer} onOpenListing={onOpenListing} />}
+        {tab === 'offers' && <MyOffersTab currentFarmer={currentFarmer} onOpenListing={onOpenListing} onCheckout={(offer) => setCheckoutOffer(offer)} />}
         {tab === 'selling' && <SellingTab currentFarmer={currentFarmer} onOpenListing={onOpenListing} />}
       </div>
 
@@ -102,6 +104,18 @@ export default function MarketplaceScreen({ currentFarmer, onClose, onOpenListin
           listingId={selectedListingId}
           currentFarmer={currentFarmer}
           onClose={() => { setSelectedListingId(null); loadListings(); }}
+        />
+      )}
+
+      {checkoutOffer && (
+        <TradeCheckout
+          offer={checkoutOffer}
+          currentFarmer={currentFarmer}
+          onClose={() => setCheckoutOffer(null)}
+          onTrack={(tradeId) => {
+            setCheckoutOffer(null);
+            if (onTrackTrade) onTrackTrade(tradeId);
+          }}
         />
       )}
     </div>

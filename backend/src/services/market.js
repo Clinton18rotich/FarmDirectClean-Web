@@ -53,6 +53,15 @@ function createListing({ passportId, sellerId }) {
   const animal = shamba.getLivestock(passportId);
   if (!animal) return { error: 'Animal not found' };
   if (animal.ownerId !== sellerId) return { error: 'Not the owner' };
+
+  // Prevent duplicate active listing for the same passport
+  for (const existing of listings.values()) {
+    if (existing.passportId === passportId &&
+        existing.sellerId === sellerId &&
+        existing.status === 'active') {
+      return { error: 'This animal is already listed for sale' };
+    }
+  }
   if (!animal.forSale || animal.forSale.status !== 'active') {
     return { error: 'Animal is not marked for sale in shamba' };
   }
@@ -201,6 +210,9 @@ function searchListings(filter = {}) {
     out.push({
       id: listing.id,
       passportId: listing.passportId,
+      sellerId: listing.sellerId,
+      sellerName: listing.sellerName,
+      status: listing.status,
       askingPrice: listing.askingPrice,
       negotiable: listing.negotiable,
       listedAt: listing.listedAt,
