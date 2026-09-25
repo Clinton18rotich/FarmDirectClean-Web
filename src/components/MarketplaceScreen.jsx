@@ -37,12 +37,17 @@ const TABS = [
   { id: 'selling', label: '🏷️ Selling' },
 ];
 
-export default function MarketplaceScreen({ currentFarmer, onClose, onOpenListing, onTrackTrade }) {
+export default function MarketplaceScreen({ currentFarmer, onClose, onOpenListing, onTrackTrade, initialListingId }) {
   const [tab, setTab] = useState('browse');
   const [filters, setFilters] = useState({ type: '', county: '', minPrice: '', maxPrice: '', sort: '' });
   const [showFilters, setShowFilters] = useState(false);
   const [listings, setListings] = useState([]);
   const [selectedListingId, setSelectedListingId] = useState(null);
+
+  // Session 6.4b: auto-open a specific listing when navigated from Home
+  useEffect(() => {
+    if (initialListingId) setSelectedListingId(initialListingId);
+  }, [initialListingId]);
   const [checkoutOffer, setCheckoutOffer] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);

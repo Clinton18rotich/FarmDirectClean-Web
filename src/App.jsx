@@ -35,6 +35,7 @@ export default function App() {
 
   const [myFarmer, setMyFarmer] = useState(null);
   const [showMarketplace, setShowMarketplace] = useState(false);
+  const [pendingListingId, setPendingListingId] = useState(null);
   const [trackingTradeId, setTrackingTradeId] = useState(null);
   const [checkoutTrade, setCheckoutTrade] = useState(null);
   const [releaseTrade, setReleaseTrade] = useState(null);
@@ -107,6 +108,19 @@ export default function App() {
       const savedRider = localStorage.getItem('riderRegistration');
       if (savedRider) setRider(JSON.parse(savedRider));
     } catch (e) { /* ignore */ }
+  }, []);
+
+  // Session 6.4b: listen for tap on a Home livestock card → open marketplace detail
+  useEffect(() => {
+    const handler = (e) => {
+      const listingId = e.detail?.listingId;
+      if (listingId) {
+        setPendingListingId(listingId);
+        setShowMarketplace(true);
+      }
+    };
+    window.addEventListener('fd:openMarketListing', handler);
+    return () => window.removeEventListener('fd:openMarketListing', handler);
   }, []);
 
   // Load market livestock on mount + whenever the user opens the Livestock tab
@@ -482,11 +496,38 @@ export default function App() {
                   <p style={{fontSize:10,color:'#4CAF50',margin:'2px 0'}}>{p.unit}</p>
                   <p style={{fontWeight:'bold',fontSize:16,color:'#4CAF50',margin:'4px 0'}}>KES {p.price.toLocaleString()}</p>
                   <div style={{display:'flex',gap:4}}>
-                    <button style={{background:'none',border:'1px solid #ddd',padding:'4px 8px',borderRadius:4,fontSize:10,cursor:'pointer'}}>⭐ Reviews</button>
-                    <button onClick={() => {if(confirm("⚠️ IMPORTANT: Never send money outside FarmDirect. Always use in-app ESCROW payment.\n\nDo you still want to call?")) window.open(`tel:+${p.phone}`)}} style={{background:'none',border:'1px solid #ddd',padding:'4px 8px',borderRadius:4,fontSize:10,cursor:'pointer'}}>📞 Call</button>
+                    {p.isMarketListing ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.dispatchEvent(new CustomEvent('fd:openMarketListing', { detail: { listingId: p.listingId } }));
+                        }}
+                        style={{background:'#E3F2FD',border:'1px solid #90CAF9',color:'#0D47A1',padding:'4px 8px',borderRadius:4,fontSize:10,cursor:'pointer',fontWeight:'bold'}}
+                      >
+                        🔓 View & Unlock
+                      </button>
+                    ) : (
+                      <>
+                        <button style={{background:'none',border:'1px solid #ddd',padding:'4px 8px',borderRadius:4,fontSize:10,cursor:'pointer'}}>⭐ Reviews</button>
+                        <button onClick={() => {if(confirm("⚠️ IMPORTANT: Never send money outside FarmDirect. Always use in-app ESCROW payment.\n\nDo you still want to call?")) window.open(`tel:+${p.phone}`)}} style={{background:'none',border:'1px solid #ddd',padding:'4px 8px',borderRadius:4,fontSize:10,cursor:'pointer'}}>📞 Call</button>
+                      </>
+                    )}
                   </div>
                 </div>
-                <button onClick={() => addToCart(p)} style={{background:'#4CAF50',color:'white',border:'none',padding:'8px 14px',borderRadius:8,cursor:'pointer',fontWeight:'bold'}}>Add</button>
+                {!p.isMarketListing && (
+                  <button onClick={() => addToCart(p)} style={{background:'#4CAF50',color:'white',border:'none',padding:'8px 14px',borderRadius:8,cursor:'pointer',fontWeight:'bold'}}>Add</button>
+                )}
+                {p.isMarketListing && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      window.dispatchEvent(new CustomEvent('fd:openMarketListing', { detail: { listingId: p.listingId } }));
+                    }}
+                    style={{background:'#1565C0',color:'white',border:'none',padding:'8px 14px',borderRadius:8,cursor:'pointer',fontWeight:'bold'}}
+                  >
+                    View
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -549,9 +590,10 @@ export default function App() {
       {showMarketplace && (
         <MarketplaceScreen
           currentFarmer={myFarmer?.farmer ? { id: myFarmer.farmer.phone, fullName: myFarmer.farmer.fullName, phone: myFarmer.farmer.phone } : null}
-          onClose={() => setShowMarketplace(false)}
+          initialListingId={pendingListingId}
+          onClose={() => { setShowMarketplace(false); setPendingListingId(null); }}
           onOpenListing={() => {}}
-          onTrackTrade={(tradeId) => { setShowMarketplace(false); setTrackingTradeId(tradeId); }}
+          onTrackTrade={(tradeId) => { setShowMarketplace(false); setPendingListingId(null); setTrackingTradeId(tradeId); }}
         />
       )}
 
