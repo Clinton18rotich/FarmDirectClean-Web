@@ -8,6 +8,7 @@ import PhotoViewer from './PhotoViewer';
 import PhotoGalleryModal from './PhotoGalleryModal';
 import TransferOwnershipModal from './TransferOwnershipModal';
 import KYCModal from './KYCModal';
+import HealthRecordModal from './HealthRecordModal';
 import { api } from '../services/api';
 import { normalizeKenyaPhone, isValidKenyaPhone } from '../utils/phone';
 
@@ -254,6 +255,7 @@ function LivestockModule({ myFarmer, myLivestock, reload, onBrowseMarketplace })
   const [photoViewer, setPhotoViewer] = useState(null);
   const [photoGalleryTarget, setPhotoGalleryTarget] = useState(null);
   const [transferTarget, setTransferTarget] = useState(null);
+  const [healthTarget, setHealthTarget] = useState(null);
   
   // Load physical attribute constants on mount
   useEffect(() => {
@@ -821,6 +823,27 @@ function LivestockModule({ myFarmer, myLivestock, reload, onBrowseMarketplace })
               </button>
             )}
 
+            {/* Session 6.13: Health Record — two-tier self/vet-verified events */}
+            {!isDead && !a.isReportedStolen && (
+              <button
+                onClick={() => setHealthTarget(a)}
+                style={{
+                  width:'100%',
+                  marginTop:6,
+                  background:'#E8F5E9',
+                  color:'#1B5E20',
+                  border:'1px solid #A5D6A7',
+                  padding:'8px',
+                  borderRadius:8,
+                  fontSize:11,
+                  cursor:'pointer',
+                  fontWeight:'bold',
+                }}
+              >
+                🩺 Health Record
+              </button>
+            )}
+
             {/* Session 5A: Transfer ownership (gift / inheritance / dowry / direct sale) */}
             {!isDead && !isHome && !a.isReportedStolen && (
               <button
@@ -945,6 +968,19 @@ function LivestockModule({ myFarmer, myLivestock, reload, onBrowseMarketplace })
           onClose={() => setTransferTarget(null)}
           onUpdated={async () => {
             setTransferTarget(null);
+            if (reload) await reload();
+          }}
+        />
+      )}
+
+      {/* Session 6.13: Health Record modal */}
+      {healthTarget && (
+        <HealthRecordModal
+          animal={healthTarget}
+          currentFarmer={myFarmer ? { id: myFarmer.farmer?.phone, fullName: myFarmer.farmer?.fullName, phone: myFarmer.farmer?.phone } : null}
+          currentVet={null}
+          onClose={() => setHealthTarget(null)}
+          onUpdated={async () => {
             if (reload) await reload();
           }}
         />

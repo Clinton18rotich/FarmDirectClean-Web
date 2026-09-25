@@ -75,6 +75,15 @@ api.shamba = {
   getLivestock: (passportId) => request(`/api/shamba/livestock/${passportId}`),
   reportStolen: (passportId, data) => request(`/api/shamba/livestock/${passportId}/report-stolen`, { method: 'POST', body: data }),
   addVaccination: (passportId, data) => request(`/api/shamba/livestock/${passportId}/vaccination`, { method: 'POST', body: data }),
+  healthEventTypes: () => request('/api/shamba/health-event-types'),
+  recordHealthEvent: (passportId, data) => request(`/api/shamba/livestock/${passportId}/health-event`, { method: 'POST', body: data }),
+  listHealthEvents: (passportId, filter = {}) => {
+    const params = new URLSearchParams(filter).toString();
+    return request(`/api/shamba/livestock/${passportId}/health-events${params ? '?' + params : ''}`);
+  },
+  getHealthEvent: (passportId, eventId) => request(`/api/shamba/livestock/${passportId}/health-event/${eventId}`),
+  countersignHealthEvent: (passportId, eventId, data) => request(`/api/shamba/livestock/${passportId}/health-event/${eventId}/countersign`, { method: 'POST', body: data }),
+  deleteHealthEvent: (passportId, eventId, by) => request(`/api/shamba/livestock/${passportId}/health-event/${eventId}${by ? '?by=' + encodeURIComponent(by) : ''}`, { method: 'DELETE' }),
 
   // Marketplace (Session 1 backend)
   listForSale: (passportId, data) => request(`/api/shamba/livestock/${passportId}/list-for-sale`, { method: 'POST', body: data }),
