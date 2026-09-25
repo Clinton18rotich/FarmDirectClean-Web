@@ -240,4 +240,28 @@ router.post('/meat/:token/report', (req, res) => {
   res.json({ success: true, message: 'Fraud reported. Authorities notified.' });
 });
 
+/**
+ * Submit legal exemption for a donkey slaughter request.
+ */
+router.post('/slaughter/:id/exemption', async (req, res) => {
+  try {
+    const result = await shamba.submitExemption(req.params.id, req.body || {});
+    if (result.error || result.success === false) {
+      return res.status(400).json({ success: false, message: result.message || result.error });
+    }
+    res.json({ success: true, request: result.request, exemption: result.exemption });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+/**
+ * Get exemption status for a slaughter request.
+ */
+router.get('/slaughter/:id/exemption', (req, res) => {
+  const request = shamba.getSlaughterRequest(req.params.id);
+  if (!request) return res.status(404).json({ success: false, message: 'Request not found' });
+  res.json({ success: true, exemption: request.exemption || null });
+});
+
 module.exports = router;

@@ -677,7 +677,27 @@ function getStats() {
   };
 }
 
+/**
+ * Check pending donkey slaughter requests for 24h timeout.
+ * Call from reconciliation cron or on-read.
+ */
+function checkDonkeyTimeouts() {
+  const now = new Date();
+  let timedOut = 0;
+  for (const r of slaughterRequests.values()) {
+    if (r.status === 'awaiting_owner_sms' && r.ownerApprovalExpiresAt && new Date(r.ownerApprovalExpiresAt) < now) {
+      r.status = 'owner_timeout';
+      timedOut++;
+      console.log('⏰ Donkey slaughter request timed out:', r.id);
+    }
+  }
+  if (timedOut) persistSlaughter();
+  return { timedOut };
+}
+
 module.exports = {
+  checkDonkeyTimeouts,
+  findSlaughterByCode,
   // Land
   registerLand,
   getLandByOwner,
@@ -864,6 +884,12 @@ function createSlaughterRequest(data) {
   const requestId = generateSlaughterRequestId();
   const approvalCode = generateApprovalCode();
 
+  // Donkeys are protected by Kenya's Slaughter Ban (2020) — owner must
+  // explicitly approve via SMS within 24h. Other species keep the in-app flow.
+  const isDonkey = (data.animalType || '').toLowerCase() === 'donkey';
+  const now = new Date().toISOString();
+  const expiresAt = isDonkey ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : null;
+
   const request = {
     id: requestId,
     slaughterhouseId: data.slaughterhouseId,
@@ -875,9 +901,35 @@ function createSlaughterRequest(data) {
     ownerId: data.ownerId,
     ownerName: data.ownerName,
     ownerPhone: data.ownerPhone,
-    status: 'pending_approval',
+    status: isDonkey ? 'awaiting_owner_sms' : 'pending_approval',
     approvalCode,
-    requestedAt: new Date().toISOString(),
+    isDonkey,
+    exemption: isDonkey ? {
+      required: true,
+      approved: false,
+      status: 'not_submitted',
+      documentType: null,
+      document: null,
+      referenceNumber: null,
+      issuedBy: null,
+      issuedAt: null,
+      validUntil: null,
+      reason: null,
+      notes: null,
+      submittedBy: null,
+      submittedAt: null,
+      reviewedBy: null,
+      reviewedAt: null,
+      rejectionReason: null,
+      providerRef: null,
+      provider: process.env.EXEMPTION_PROVIDER || 'manual',
+      raw: null,
+    } : null,
+    requestedAt: now,
+    smsSentAt: null,
+    ownerRespondedAt: null,
+    ownerResponseText: null,
+    ownerApprovalExpiresAt: expiresAt,
     approvedAt: null,
     rejectedAt: null,
     completedAt: null,
@@ -892,27 +944,75 @@ function createSlaughterRequest(data) {
   console.log('   Animal:', data.animalPassport, '| Owner:', data.ownerName);
   console.log('   Approval code:', approvalCode, '(send to', data.ownerPhone + ')');
 
+  // Donkey: auto-send SMS to owner
+  if (isDonkey && data.ownerPhone) {
+    (async () => {
+      try {
+        const sms = require('./sms');
+        const msg =
+          `FarmDirect: Slaughter request for your donkey (${data.animalPassport}) ` +
+          `from ${data.slaughterhouseName}.\n\n` +
+          `Donkeys are protected by Kenya's Slaughter Ban (2020). ` +
+          `Reply YES ${approvalCode} to confirm the owner consents, or NO ${approvalCode} to reject.\n\n` +
+          `You have 24 hours.`;
+        const result = await sms.sendSms(data.ownerPhone, msg);
+        request.smsSentAt = new Date().toISOString();
+        request.smsRecordId = result && result.id;
+        persistSlaughter();
+        console.log('📱 Donkey slaughter SMS sent to', data.ownerPhone);
+      } catch (err) {
+        console.error('❌ Failed to send donkey slaughter SMS:', err.message);
+      }
+    })();
+  }
+
   return request;
 }
 
 /**
  * Approve slaughter (owner action, via SMS or web)
  */
+/**
+ * Look up a slaughter request by its approval code (used by SMS webhook).
+ */
+function findSlaughterByCode(code) {
+  const upper = String(code || '').toUpperCase();
+  for (const r of slaughterRequests.values()) {
+    if (r.approvalCode === upper && (r.status === 'pending_approval' || r.status === 'awaiting_owner_sms')) {
+      return r;
+    }
+  }
+  return null;
+}
+
 function approveSlaughter(requestId, code) {
   const request = slaughterRequests.get(requestId);
   if (!request) return { success: false, message: 'Request not found' };
-  if (request.status !== 'pending_approval') {
+  if (request.status !== 'pending_approval' && request.status !== 'awaiting_owner_sms') {
     return { success: false, message: 'Request is ' + request.status };
   }
   if (code !== request.approvalCode) {
     return { success: false, message: 'Invalid approval code' };
   }
+  if (request.status === 'awaiting_owner_sms' && request.ownerApprovalExpiresAt && new Date(request.ownerApprovalExpiresAt) < new Date()) {
+    request.status = 'owner_timeout';
+    persistSlaughter();
+    return { success: false, message: 'Owner approval window expired' };
+  }
 
-  request.status = 'approved';
   request.approvedAt = new Date().toISOString();
+  if (request.isDonkey) {
+    request.ownerRespondedAt = new Date().toISOString();
+    request.ownerResponseText = 'YES ' + code;
+    // Donkey: owner consent recorded, now requires legal exemption
+    request.status = 'awaiting_exemption';
+    console.log('🫏 Owner consented. Awaiting legal exemption:', requestId);
+  } else {
+    request.status = 'approved';
+    console.log('✅ Slaughter approved:', requestId);
+  }
 
   persistSlaughter();
-  console.log('✅ Slaughter approved:', requestId);
   return { success: true, request };
 }
 
@@ -922,13 +1022,17 @@ function approveSlaughter(requestId, code) {
 function rejectSlaughter(requestId, reason) {
   const request = slaughterRequests.get(requestId);
   if (!request) return { success: false, message: 'Request not found' };
-  if (request.status !== 'pending_approval') {
+  if (request.status !== 'pending_approval' && request.status !== 'awaiting_owner_sms') {
     return { success: false, message: 'Request is ' + request.status };
   }
 
   request.status = 'rejected';
   request.rejectedAt = new Date().toISOString();
   request.rejectionReason = reason || 'Owner declined';
+  if (request.isDonkey) {
+    request.ownerRespondedAt = new Date().toISOString();
+    request.ownerResponseText = 'NO — ' + (reason || 'declined');
+  }
 
   persistSlaughter();
   console.log('❌ Slaughter rejected:', requestId, '|', reason);
@@ -938,12 +1042,116 @@ function rejectSlaughter(requestId, reason) {
 /**
  * Complete slaughter + generate meat tokens
  */
+/**
+ * Submit a legal exemption for a donkey slaughter request.
+ * Routes to the configured provider (manual or dvs).
+ */
+async function submitExemption(requestId, exemptionData) {
+  const request = slaughterRequests.get(requestId);
+  if (!request) return { success: false, message: 'Request not found' };
+  if (!request.isDonkey) return { success: false, message: 'Exemption only required for donkeys' };
+  if (request.status !== 'awaiting_exemption') {
+    return { success: false, message: 'Request is not awaiting exemption (status: ' + request.status + ')' };
+  }
+
+  const exemptionProviders = require('./exemptionProviders');
+  const result = await exemptionProviders.submitExemption(request, exemptionData);
+  request.exemption = result;
+
+  if (result.approved === true) {
+    request.status = 'approved';
+    request.approvedAt = new Date().toISOString();
+  }
+
+  persistSlaughter();
+  console.log('📄 Exemption submitted for', requestId, '| provider:', result.provider, '| approved:', result.approved);
+  return { success: true, request, exemption: result };
+}
+
+/**
+ * Admin approves a manual exemption (dev + initial ops).
+ */
+function approveExemption(requestId, adminId, notes) {
+  const request = slaughterRequests.get(requestId);
+  if (!request) return { success: false, message: 'Request not found' };
+  if (!request.isDonkey) return { success: false, message: 'Not a donkey request' };
+  if (!request.exemption) return { success: false, message: 'No exemption submitted' };
+  if (request.exemption.provider !== 'manual') {
+    return { success: false, message: 'Exemption is managed by ' + request.exemption.provider };
+  }
+  if (request.exemption.approved) return { success: false, message: 'Exemption already approved' };
+
+  request.exemption.approved = true;
+  request.exemption.status = 'approved';
+  request.exemption.reviewedBy = adminId || 'admin';
+  request.exemption.reviewedAt = new Date().toISOString();
+  if (notes) request.exemption.notes = (request.exemption.notes || '') + ' | Admin: ' + notes;
+
+  if (request.status === 'awaiting_exemption') {
+    request.status = 'approved';
+    request.approvedAt = new Date().toISOString();
+  }
+
+  persistSlaughter();
+  console.log('✅ Exemption approved by', adminId || 'admin', 'for', requestId);
+  return { success: true, request };
+}
+
+function rejectExemption(requestId, adminId, reason) {
+  const request = slaughterRequests.get(requestId);
+  if (!request) return { success: false, message: 'Request not found' };
+  if (!request.exemption) return { success: false, message: 'No exemption submitted' };
+
+  request.exemption.approved = false;
+  request.exemption.status = 'rejected';
+  request.exemption.reviewedBy = adminId || 'admin';
+  request.exemption.reviewedAt = new Date().toISOString();
+  request.exemption.rejectionReason = reason || 'Rejected by admin';
+
+  persistSlaughter();
+  console.log('❌ Exemption rejected for', requestId, '|', reason);
+  return { success: true, request };
+}
+
 function completeSlaughter(requestId, numberOfPackages = 1) {
   const request = slaughterRequests.get(requestId);
   if (!request) return { success: false, message: 'Request not found' };
   if (request.status !== 'approved') {
-    return { success: false, message: 'Request not approved' };
+    return { success: false, message: 'Request not approved (status: ' + request.status + ')' };
   }
+
+  // Donkey legal-exemption gate
+  if (request.isDonkey) {
+    if (!request.exemption || request.exemption.approved !== true) {
+      return {
+        success: false,
+        message: 'Donkey slaughter requires an approved legal exemption (Kenya Slaughter Ban 2020)',
+      };
+    }
+  }
+
+  // Determine intended use — donkeys default to disposal
+  const isDonkey = request.isDonkey;
+  const intendedUse = isDonkey ? 'disposal' : 'human_consumption';
+
+  // Build the slaughter story for traceability
+  const slaughterStory = isDonkey ? {
+    exemptionType: request.exemption.documentType,
+    exemptionRef: request.exemption.referenceNumber,
+    exemptionProvider: request.exemption.provider,
+    authorizedBy: request.exemption.issuedBy,
+    issuedAt: request.exemption.issuedAt,
+    validUntil: request.exemption.validUntil,
+    ownerConsent: {
+      respondedAt: request.ownerRespondedAt,
+      responseText: request.ownerResponseText,
+      viaPhone: request.ownerPhone,
+      smsRecordId: request.smsRecordId,
+    },
+    originalOwner: request.ownerName,
+    slaughterhouse: request.slaughterhouseName,
+    slaughteredAt: new Date().toISOString(),
+  } : null;
 
   // Generate meat tokens
   const tokens = [];
@@ -954,6 +1162,10 @@ function completeSlaughter(requestId, numberOfPackages = 1) {
       animalPassport: request.animalPassport,
       animalType: request.animalType,
       animalBreed: request.animalBreed,
+      species: request.animalType,
+      highScrutiny: isDonkey,
+      intendedUse,
+      slaughterStory,
       slaughterhouseId: request.slaughterhouseId,
       slaughterhouseName: request.slaughterhouseName,
       farmerName: request.ownerName,
@@ -998,6 +1210,22 @@ function verifyMeat(token) {
   const record = meatTokens.get(token);
   if (!record) {
     return { success: false, valid: false, message: 'Meat token not found — possible counterfeit' };
+  }
+  // Donkey: attach high-scrutiny warning + full slaughter story
+  if (record.highScrutiny || (record.species || '').toLowerCase() === 'donkey') {
+    return {
+      success: true,
+      valid: true,
+      species: record.species || record.animalType,
+      warning: 'DONKEY — Protected species. Kenya Slaughter Ban 2020.',
+      intendedUse: record.intendedUse || 'disposal',
+      notForHumanConsumption: record.intendedUse !== 'human_consumption',
+      slaughterStory: record.slaughterStory || null,
+      record,
+      message: record.intendedUse === 'human_consumption'
+        ? 'This meat is from a legally exempted donkey slaughter.'
+        : 'This meat is NOT for human consumption. See details below.',
+    };
   }
   if (record.reported) {
     return { success: false, valid: false, message: 'This meat was reported as fraud' };
@@ -1050,6 +1278,9 @@ module.exports.createSlaughterRequest = createSlaughterRequest;
 module.exports.approveSlaughter = approveSlaughter;
 module.exports.rejectSlaughter = rejectSlaughter;
 module.exports.completeSlaughter = completeSlaughter;
+module.exports.submitExemption = submitExemption;
+module.exports.approveExemption = approveExemption;
+module.exports.rejectExemption = rejectExemption;
 module.exports.verifyMeat = verifyMeat;
 module.exports.reportMeatFraud = reportMeatFraud;
 module.exports.listSlaughterRequests = listSlaughterRequests;

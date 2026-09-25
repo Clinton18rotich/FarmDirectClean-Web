@@ -51,6 +51,62 @@ router.post('/sms', async (req, res) => {
       return res.json({ success: true, type: 'help' });
     }
 
+    // ═══ SLAUGHTER APPROVAL (YES/NO <code>) ═══
+    if (response === 'YES' || response === 'NO') {
+      const code = parts[1];
+      if (!code) {
+        await sms.sendSms(from, 'FarmDirect: Please include the approval code.\nExample: YES ABC123');
+        return res.json({ success: true, message: 'Missing code' });
+      }
+
+      try {
+        const shamba = require('../services/shamba');
+        const request = shamba.findSlaughterByCode(code);
+
+        if (!request) {
+          await sms.sendSms(from, 'FarmDirect: No pending slaughter request matches that code. It may have expired.');
+          return res.json({ success: true, message: 'No match' });
+        }
+
+        // Verify the SMS is from the registered owner
+        const expected = (request.ownerPhone || '').replace(/\D/g, '').slice(-9);
+        const actual = String(from || '').replace(/\D/g, '').slice(-9);
+        if (expected && actual && expected !== actual) {
+          await sms.sendSms(from, 'FarmDirect: This code belongs to another owner. Reply HELP if you need assistance.');
+          return res.json({ success: true, message: 'Wrong owner' });
+        }
+
+        if (response === 'YES') {
+          const result = shamba.approveSlaughter(request.id, code);
+          if (!result.success) {
+            await sms.sendSms(from, 'FarmDirect: ' + result.message);
+            return res.json({ success: false, message: result.message });
+          }
+          await sms.sendSms(from,
+            `FarmDirect: Slaughter of ${request.animalPassport} approved. ` +
+            `The slaughterhouse has been notified. Do NOT proceed if this was not you — call support.`);
+          console.log('✅ Slaughter YES via SMS:', request.id);
+          return res.json({ success: true, type: 'slaughter_approved', requestId: request.id });
+        }
+
+        // NO
+        const result = shamba.rejectSlaughter(request.id, 'Owner declined via SMS');
+        if (!result.success) {
+          await sms.sendSms(from, 'FarmDirect: ' + result.message);
+          return res.json({ success: false, message: result.message });
+        }
+        await sms.sendSms(from,
+          `FarmDirect: Slaughter of ${request.animalPassport} DECLINED. ` +
+          `The slaughterhouse has been notified. Thank you for protecting your animal.`);
+        console.log('🛑 Slaughter NO via SMS:', request.id);
+        return res.json({ success: true, type: 'slaughter_rejected', requestId: request.id });
+      } catch (err) {
+        console.error('Slaughter SMS handler error:', err.message);
+        await sms.sendSms(from, 'FarmDirect: An error occurred processing your reply. Please try again.');
+        return res.json({ success: false, message: err.message });
+      }
+    }
+
     // ═══ INHERITANCE COMMAND HANDLER ═══
     // CONFIRM <CODE>          — beneficiary or elder confirms
     // DISPUTE <CODE> [reason] — beneficiary disputes
