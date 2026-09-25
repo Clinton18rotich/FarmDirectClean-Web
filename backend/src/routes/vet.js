@@ -123,6 +123,37 @@ router.post('/sick/report', async (req, res) => {
     if (!animal) return res.status(404).json({ success: false, message: 'Animal not found in system' });
     if (animal.status === 'dead') return res.status(400).json({ success: false, message: 'Cannot report deceased animal' });
 
+    const cleanPhone = normalizeKenyaPhone(farmerPhone);
+    const reporterPhone = String(cleanPhone || farmerPhone || '').replace(/\D/g, '');
+    const ownerPhone = String(animal.ownerPhone || animal.ownerId || '').replace(/\D/g, '');
+
+    // ─── Session 6.21: Multi-role gate ───
+    // If reporter is BOTH a verified vet AND the owner of this animal,
+    // offer self-service instead of dispatching.
+    const reporterIsOwner = reporterPhone && ownerPhone &&
+      reporterPhone.slice(-9) === ownerPhone.slice(-9);
+    let reporterVet = null;
+    try {
+      reporterVet = vet.getVetByPhone(farmerPhone) || vet.getVetByPhone(cleanPhone);
+    } catch (e) { /* silent */ }
+    const reporterIsVerifiedVet = !!(reporterVet && reporterVet.verified);
+
+    if (reporterIsOwner && reporterIsVerifiedVet) {
+      console.log('🩺 Multi-role gate: reporter is verified vet + owner → self-service offered');
+      return res.json({
+        success: true,
+        selfServiceAvailable: true,
+        reporterVetId: reporterVet.id,
+        reporterVetName: reporterVet.fullName,
+        animal: {
+          passportId: animal.passportId,
+          type: animal.type,
+          breed: animal.breed,
+        },
+        message: 'You are a KVB-verified vet. Record your own treatment, or request another vet.',
+      });
+    }
+
     const report = vet.reportSickAnimal({
       passportId,
       animalType: animal.type,
@@ -146,6 +177,7 @@ router.post('/sick/report', async (req, res) => {
 
     res.json({ 
       success: true, 
+      selfServiceAvailable: false,
       report: vet.getReport(report.id),
       vetsFound: nearestVets.length,
       message: nearestVets.length > 0 
