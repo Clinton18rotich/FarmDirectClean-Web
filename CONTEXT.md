@@ -758,3 +758,56 @@ tier:
 Buyers see the tier on each event and can judge trust accordingly.
 The animal passport becomes a **complete health diary**, not a
 vet-only record.
+
+---
+
+## Design Decision — Chat First for Livestock (2026-09-25)
+
+**Decision:** After unlock, buyers on a livestock listing should reach a
+**scoped chat thread**, not a phone call. Chat is the primary interaction
+primitive for livestock negotiation; phone is a fallback (via the seller
+card's Call link).
+
+### Why chat > call for livestock
+
+1. Livestock deals are negotiated, not decided in one call.
+2. Chat creates a paper trail. Evidence for dispute resolution.
+3. Async works for farmers — check phone in the evening, reply later.
+4. Language flexibility — English + Kiswahili in the same thread.
+5. Contact info stays behind the platform — fewer harassment vectors.
+6. Scales for the seller — 15 chats in the time of one call.
+7. Matches local pattern — replaces WhatsApp with a transaction-scoped
+   version.
+
+### Revised flow
+
+Home → tap livestock card → ListingDetailScreen → Unlock Contact (KES 100)
+→ [💬 Message Seller] (primary) + [📨 Make Offer] (secondary)
+→ chat thread scoped to this listing
+→ negotiate → tap [📨 Make Offer] in thread
+→ offer + chat history + trade status all in one place
+
+### What this changes
+
+- Bottom-nav Chat tab becomes the inbox.
+- ListingDetailScreen after unlock: add Message Seller CTA.
+- 6.11 Real Chat is now top-priority next session.
+
+### Scoping
+
+- Thread = a listing OR a trade. Participants = the parties.
+- Auto-created when buyer taps Message Seller.
+- Auto-archived when trade completes (history preserved).
+- Phone numbers withheld until trade completes.
+- Notifications: unread badge on Chat tab.
+- SMS bridge later (Africa's Talking inbound webhook).
+
+### Next session plan
+
+1. 6.11 Real Chat (~6 hrs)
+2. 4B Multi-leg shipment tracking (~6 hrs)
+3. 6.14 Document templates (~3 hrs)
+4. 6.7-6.9 Inheritance, bulk sales, land
+
+Order rationale: chat is how the deal happens; tracking is what
+happens after. Deal > logistics. Docs wait until vets use the platform.
