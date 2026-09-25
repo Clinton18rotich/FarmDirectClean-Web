@@ -272,6 +272,11 @@ function ListingCard({ listing, onOpen, formatPrice }) {
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
           <strong style={{ fontSize:14, color:'#333' }}>{listing.type}{listing.breed ? ` · ${listing.breed}` : ''}</strong>
           {listing.negotiable && <span style={{ fontSize:9, background:'#E8F5E9', color:'#2E7D32', padding:'2px 6px', borderRadius:4, fontWeight:'bold' }}>NEGOTIABLE</span>}
+          {listing.healthCount > 0 && (
+            <span style={{ fontSize:9, background:'#E1F5FE', color:'#01579B', padding:'2px 6px', borderRadius:4, fontWeight:'bold' }}>
+              🩺 {listing.healthCount}
+            </span>
+          )}
         </div>
         <p style={{ fontSize:11, color:'#666', margin:'4px 0 0' }}>
           {listing.gender ? `${listing.gender} · ` : ''}{listing.age ? `${listing.age} · ` : ''}{listing.location?.county || 'Kenya'}

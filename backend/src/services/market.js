@@ -135,6 +135,24 @@ function getListing(id) {
     console.warn('🚨 Listing auto-suspended (stolen):', id);
   }
 
+  // Health events for this animal (buyer-visible trust signals)
+  let healthEvents = [];
+  let healthSummary = null;
+  try {
+    const healthEventsSvc = require('./healthEvents');
+    const list = healthEventsSvc.listHealthEvents(listing.passportId);
+    healthEvents = list.events || [];
+    const vetVerified = healthEvents.filter(e => e.tier === 'vet_verified').length;
+    healthSummary = {
+      total: healthEvents.length,
+      vetVerified,
+      selfOrCommunity: healthEvents.length - vetVerified,
+      lastEvent: healthEvents[0] || null,
+    };
+  } catch (e) {
+    console.warn('healthEvents lookup failed:', e.message);
+  }
+
   // Build the full response: listing + live animal + seller info (masked)
   return {
     listing: {
@@ -147,6 +165,8 @@ function getListing(id) {
       views: listing.views,
       offerCount: listing.offerIds.length,
     },
+    healthEvents,
+    healthSummary,
     animal: {
       passportId: animal.passportId,
       type: animal.type,
@@ -207,12 +227,23 @@ function searchListings(filter = {}) {
     if (filter.maxPrice && listing.askingPrice > Number(filter.maxPrice)) continue;
     if (filter.sellerId && listing.sellerId !== filter.sellerId) continue;
 
+    let healthCount = 0;
+    let vetVerifiedCount = 0;
+    try {
+      const healthEventsSvc = require('./healthEvents');
+      const events = healthEventsSvc.listHealthEvents(listing.passportId).events || [];
+      healthCount = events.length;
+      vetVerifiedCount = events.filter(e => e.tier === 'vet_verified').length;
+    } catch (e) { /* silent */ }
+
     out.push({
       id: listing.id,
       passportId: listing.passportId,
       sellerId: listing.sellerId,
       sellerName: listing.sellerName,
       status: listing.status,
+      healthCount,
+      vetVerifiedCount,
       askingPrice: listing.askingPrice,
       negotiable: listing.negotiable,
       listedAt: listing.listedAt,

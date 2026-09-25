@@ -191,6 +191,55 @@ export default function ListingDetailScreen({ listingId, currentFarmer, onClose,
           )}
         </div>
 
+        {/* Health Record — buyer-visible trust signal */}
+        {data.healthEvents && data.healthEvents.length > 0 && (
+          <div style={card}>
+            <p style={sectionTitle}>🩺 Health Record ({data.healthEvents.length})</p>
+            <p style={{ fontSize:11, color:'#666', margin:'0 0 10px' }}>
+              {data.healthSummary?.vetVerified || 0} vet-verified · {data.healthSummary?.selfOrCommunity || 0} self/community
+            </p>
+            <div style={{ maxHeight:220, overflowY:'auto' }}>
+              {data.healthEvents.slice(0, 6).map((e, i) => {
+                const tier = e.tier === 'vet_verified' ? { bg:'#E8F5E9', fg:'#2E7D32', label:'Vet-verified' }
+                  : e.tier === 'community_attested' ? { bg:'#E3F2FD', fg:'#0D47A1', label:'Community' }
+                  : { bg:'#FFF8E1', fg:'#E65100', label:'Self-reported' };
+                const icon = e.eventType === 'deworming' ? '💊'
+                  : e.eventType === 'vaccination' ? '💉'
+                  : e.eventType === 'spray' ? '🧴'
+                  : e.eventType === 'wound_care' ? '🩹'
+                  : '🩺';
+                return (
+                  <div key={i} style={{ padding:'8px 0', borderTop: i > 0 ? '1px solid #F5F5F5' : 'none', fontSize:11 }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8, marginBottom:3 }}>
+                      <strong style={{ color:'#333' }}>{icon} {e.eventTypeLabel || e.eventType}</strong>
+                      <span style={{ background:tier.bg, color:tier.fg, padding:'2px 6px', borderRadius:4, fontSize:9, fontWeight:'bold', flexShrink:0 }}>{tier.label}</span>
+                    </div>
+                    <div style={{ color:'#666' }}>
+                      {e.eventDate ? new Date(e.eventDate).toLocaleDateString() : ''}
+                      {e.product && ` · ${e.product}`}
+                      {e.dosage && ` · ${e.dosage}`}
+                    </div>
+                    {e.performedBy?.name && (
+                      <div style={{ color:'#999', fontSize:10, marginTop:2 }}>by {e.performedBy.name}</div>
+                    )}
+                    {e.verifiedBy?.name && (
+                      <div style={{ color:'#2E7D32', fontSize:10, marginTop:2 }}>✓ Countersigned by {e.verifiedBy.name}</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {data.healthEvents.length > 6 && (
+              <p style={{ fontSize:10, color:'#999', textAlign:'center', marginTop:6, fontStyle:'italic' }}>
+                +{data.healthEvents.length - 6} more event{data.healthEvents.length - 6 === 1 ? '' : 's'}
+              </p>
+            )}
+            <p style={{ fontSize:10, color:'#2E7D32', marginTop:8, fontStyle:'italic', textAlign:'center' }}>
+              💡 Animals with documented care fetch higher prices.
+            </p>
+          </div>
+        )}
+
         {/* Seller card */}
         <div style={card}>
           <p style={sectionTitle}>👤 Seller</p>

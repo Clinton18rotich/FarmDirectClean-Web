@@ -288,6 +288,31 @@ function findNearestVets(report, limit = 5) {
   return scored.slice(0, limit).map(s => s.vet);
 }
 
+
+/**
+ * Get health context for a vet dispatch (Session 6.16).
+ * Includes the animal's recent health events so the vet arrives prepared.
+ */
+function getHealthContextForDispatch(animalPassport) {
+  try {
+    const healthEvents = require('./healthEvents');
+    const list = healthEvents.listHealthEvents(animalPassport);
+    const events = list.events || [];
+    return {
+      healthEvents: events.slice(0, 8),  // most recent 8
+      healthSummary: {
+        total: events.length,
+        vetVerified: events.filter(e => e.tier === 'vet_verified').length,
+        lastDeworming: events.find(e => e.eventType === 'deworming') || null,
+        lastSpray: events.find(e => e.eventType === 'spray') || null,
+        lastVaccination: events.find(e => e.eventType === 'vaccination') || null,
+      },
+    };
+  } catch (e) {
+    return { healthEvents: [], healthSummary: null };
+  }
+}
+
 async function dispatchToVet(reportId, vetId) {
   const report = sickReports.get(reportId);
   const vet = vets.get(vetId);
@@ -582,6 +607,7 @@ function activateVetByUserId(userId, kycRecord) {
 }
 
 module.exports = {
+  getHealthContextForDispatch,
   activateVetByUserId,
   // Constants
   SPECIALIZATIONS,
