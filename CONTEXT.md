@@ -591,3 +591,170 @@ session: `rm src/components/*.pre-*`.
 ### 🟡 App.jsx `checkoutTrade` state now redundant
 MarketplaceScreen owns its own `checkoutOffer` state (5B-10f), so
 App.jsx's `checkoutTrade` + render is dormant. Remove in cleanup.
+
+---
+
+## Session 6 — COMPLETE (2026-09-25)
+
+Six blocks shipped on the way to full post-5B integration:
+
+| Block | Commit | Summary |
+|-------|--------|---------|
+| 6.1 | `37ea14e` | Donkey filter chips + slaughter-ban warning banners |
+| 6.2 | `a562976` | Donkey slaughter SMS gate + legal exemption + traceability |
+| 6.12a | `227ac36` | Role-aware KYC refactor (7 roles) |
+| 6.12b | `eadaaf3` | Vet activation + role-aware KYCModal + fisherman placeholder |
+| README | `7d641dd` | Full README refresh — Verticals & Roles section |
+| cleanup | various | .pre-* purge, missing 5B-10f/5B-11 commits |
+
+### Donkey protection (Kenya Slaughter Ban 2020)
+
+Full enforcement pipeline:
+1. Slaughter request for a donkey → status `awaiting_owner_sms`
+2. Auto-SMS to registered owner with 6-char approval code
+3. Owner replies `YES <code>` or `NO <code>` via SMS
+4. 24h timeout → `owner_timeout` (blocked)
+5. Owner consent → status `awaiting_exemption`
+6. Facility submits DVS/vet exemption document
+7. Admin approves via `/api/admin/exemption/:id/approve`
+8. Only then can `completeSlaughter` run
+9. Meat token carries full story: exemption type, ref, issuer, owner
+   consent (SMS text + timestamp), original owner, facility
+10. Consumer scan (`/api/slaughterhouse/meat/verify/:token`) shows
+    DONKEY warning + `intendedUse: 'disposal'` + not-for-human-consumption
+
+**Provider abstraction:** `exemptionProviders/{index,manual,dvs}.js`
+- `manual` — admin reviews uploads (current, default)
+- `dvs` — real DVS API (stub ready, `EXEMPTION_PROVIDER=dvs` activates)
+- Fallback: DVS fails → manual
+
+Verified end-to-end:
+- Donkey `KE-DONK-SVBE14GF` → slaughter request → SMS code 1724
+- Owner YES → `awaiting_exemption` → complete BLOCKED
+- Exemption `DVS-BMT-2026-0417` submitted → admin approved
+- Complete → 2 meat tokens (MEAT-NRYSIH38, MEAT-FUYS6DBB)
+- `verifyMeat()` returns full slaughter story
+
+### Role-aware KYC (6.12a)
+
+`kycRoles.js` central config with 7 registered roles:
+
+| Role | Fee | Regulator | Documents |
+|------|-----|-----------|-----------|
+| farmer | 500 | County Ag | — |
+| rider | 500 | NTSA | vehicle_photo, driving_license |
+| vet | 1,000 | KVB | kvb_license, practicing_certificate, employment_proof |
+| slaughterhouse | 2,000 | DVS | business_registration, premises_license, dvs_health_certificate, water_quality_certificate |
+| butcher | 1,000 | County Health | business_registration, premises_license, county_health_certificate |
+| meat_handler | 300 | County Health | health_certificate |
+| fisherman | 500 | **KeFS** | kefs_fishing_license, bmu_membership, boat_registration |
+
+`createVerificationRequest({ role, documents, metadata })` validates required docs per role. Fee is role-specific. Verification record extended with `role`, `roleLabel`, `documents{}`, `metadata`, `expiry`, `history[]`.
+
+**Activation hook:** `runVerification()` on success calls
+`vet.activateVetByUserId()` or `riders.activateRiderByUserId()` — role
+services handle their own activation from the KYC approval.
+
+**Frontend:** `KYCModal` now takes `role` prop (defaults to farmer, so
+backward compatible). Fetches `GET /api/kyc/roles/:role`, renders
+dynamic document uploads, submits to `/api/kyc/request`.
+
+**VetModule** wired: shows "Verify Now — KES 1,000" CTA when
+`myVet && !myVet.verified`, KYCModal(role='vet') renders inline,
+`✓ KVB VERIFIED` badge when approved.
+
+### Verticals & Roles (2026-09-25 — strategic decision)
+
+**Fisherman is not a farmer.** Full reasoning captured in README
+"Verticals & Roles" section. Summary:
+
+- **Regulator:** KeFS (Kenya Fisheries Service), not DVS or county ag
+- **Facilities:** landing sites (BMU-managed), not slaughterhouses
+- **Product model:** batch/weight-based (kg of tilapia), not individual
+  animal passport
+- **Handling:** cold chain (ice, refrigeration), not heat/slaughter
+- **Documents:** KeFS license, BMU membership, boat registration — not
+  KVB / DVS / KWS
+
+**Why separate:** forcing fishermen into "farmer" causes wrong
+documents requested, wrong marketplace filter, wrong regulations,
+wrong trust model.
+
+**Design principle:** KYC is the shared layer. Each vertical owns its
+own service, marketplace filter, and facilities. Adding a vertical =
+1 kycRoles entry + 1 service file + 1 facility type + 1 filter chip.
+**No refactor needed** — this is why 6.12a mattered.
+
+**Other future verticals:**
+- Wildlife (crocodile, ostrich) — KWS, individual animal model like
+  livestock
+- Beekeeping — fits under `farmer` (no slaughter, no cold chain)
+- Crops (Session 13) — KEPHIS, batch registry + grade certs + weight
+  proof
+- Input suppliers (Session 14) — KEBS, SKU-based
+- Fish processing (smoked, dried) — KeFS + County Health, like butcher
+
+**Status:** `fisherman` role registered in `kycRoles.js`. Service
+(`fisheries.js`), facility model (`LandingSite`), and marketplace
+filter chip TBD in a future session.
+
+### New routes added this session
+
+POST   /api/shamba/livestock/:id/transfer            (Session 5A)
+POST   /api/slaughterhouse/slaughter/request
+POST   /api/slaughterhouse/slaughter/:id/exemption   (Session 6.2)
+GET    /api/slaughterhouse/slaughter/:id/exemption
+POST   /api/slaughterhouse/slaughter/:id/complete
+GET    /api/slaughterhouse/meat/verify/:token
+POST   /api/admin/exemption/queue                    (dev only)
+POST   /api/admin/exemption/:id/approve
+POST   /api/admin/exemption/:id/reject
+GET    /api/kyc/roles
+GET    /api/kyc/roles/:role
+
+### Known issues resolved this session
+
+- ✅ `pkill -9 -f 'node src/server.js'` misses processes started with
+  `cd backend && node src/server.js`. Always use `pkill -9 -f
+  'server.js'` (broader pattern).
+- ✅ Missing 5B-10f/5B-11 commits recovered and pushed (`6be518a`).
+- ✅ `.pre-*` backup files purged (39 files removed).
+- ✅ Donkey O/0 passport ambiguity still open (log for a future
+  passport generator fix).
+
+### What's next (post-Session 6)
+
+Immediate (unblocked):
+- **Session 6.13** — Health events (two-tier: self-reported + vet-verified)
+- **Session 6.14** — Document templates (auto-fill vaccination certs, permits)
+- **Session 4B** — Multi-leg shipment tracking (Track nav)
+- **Session 6.11** — Real chat (threads scoped to trades)
+- **Session 6.7** — Livestock inheritance
+- **Session 6.8** — Bulk / share sales
+- **Session 6.9** — Land enhancements
+- **Session 13** — Crops vertical
+
+Blocked (external):
+- **Session 5C** — Real eConfirm escrow (pending reply)
+- **Session 9** — USSD *384# (pending Africa's Talking production)
+- **Production** — Company registration → Paybill → Daraja
+
+### The two-tier health insight (2026-09-25)
+
+**70% of Kenyan livestock care is self-administered.** Farmers deworm,
+spray for ticks, dress wounds, and manage most routine care without
+a vet. Only serious illness, difficult births, official certs, and
+emergency cases go to a KVB professional.
+
+**Consequence:** if the platform only records vet events, the animal's
+health record stays empty because nobody records anything.
+
+**Design (Session 6.13, in progress):** every health event carries a
+tier:
+- 🩺 **vet_verified** — signed by a KVB-verified professional
+- 🧑‍🌾 **self_reported** — owner attests, no vet present
+- 👥 **community_attested** — neighbor/extension officer witnessed
+
+Buyers see the tier on each event and can judge trust accordingly.
+The animal passport becomes a **complete health diary**, not a
+vet-only record.
