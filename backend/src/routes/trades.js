@@ -1,5 +1,24 @@
 const express = require('express');
 const router = express.Router();
+
+// Strip buyer-only fields (releaseCode) unless requester is the buyer.
+// Same privacy pattern as 6.18 (meat traceability masking).
+function sanitizeTradeForViewer(trade, viewerId) {
+  if (!trade) return trade;
+  const isBuyer = viewerId && trade.buyerId === viewerId;
+  if (isBuyer) return trade;
+  const safe = { ...trade };
+  delete safe.releaseCode;
+  delete safe.releaseCodeSentAt;
+  delete safe.releaseCodeEnteredAt;
+  delete safe.releaseCodeExpiresAt;
+  delete safe.releaseCodeAttempts;
+  // Also strip escrowConfirmationCode — internal only
+  delete safe.escrowConfirmationCode;
+  return safe;
+}
+
+
 const trades = require('../services/trades');
 
 // ═══════════════════════════════════════════════════════
@@ -185,7 +204,8 @@ router.get('/:id', (req, res) => {
  */
 router.get('/user/:userId', (req, res) => {
   const list = trades.listTradesByUser(req.params.userId, req.query);
-  res.json({ success: true, trades: list, total: list.length });
+  const sanitized = (list || []).map(t => sanitizeTradeForViewer(t, req.params.userId));
+  res.json({ success: true, trades: sanitized, total: sanitized.length });
 });
 
 /**

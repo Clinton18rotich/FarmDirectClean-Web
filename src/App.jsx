@@ -41,6 +41,7 @@ export default function App() {
   const [rider, setRider] = useState(null);
   const [justRegistered, setJustRegistered] = useState(false);
   const [registeredProducts, setRegisteredProducts] = useState([]);
+  const [marketLivestock, setMarketLivestock] = useState([]);
 
   const [selectedFarmer, setSelectedFarmer] = useState(null);
   const [messages, setMessages] = useState({});
@@ -108,6 +109,15 @@ export default function App() {
     } catch (e) { /* ignore */ }
   }, []);
 
+  // Load market livestock on mount + whenever the user opens the Livestock tab
+  useEffect(() => {
+    loadMarketLivestock();
+  }, []);
+
+  useEffect(() => {
+    if (cat === 'Livestock') loadMarketLivestock();
+  }, [cat]);
+
   // Load KYC status when farmer is set
   useEffect(() => {
     const phone = myFarmer?.farmer?.phone;
@@ -139,13 +149,50 @@ export default function App() {
   // REAL FARMERS REPLACE MOCK DATA
   // ═══════════════════════════════════════════════════
   const hasRealFarmers = registeredProducts.length > 0;
-  const displayProducts = hasRealFarmers ? registeredProducts : ALL_PRODUCTS;
+  const baseProducts = hasRealFarmers ? registeredProducts : ALL_PRODUCTS;
+  // Merge market livestock when viewing the Livestock category (or All)
+  const displayProducts = (cat === 'All' || cat === 'Livestock')
+    ? [...baseProducts, ...marketLivestock]
+    : baseProducts;
   const isDemoMode = !hasRealFarmers;
 
   const filtered = displayProducts.filter(p =>
-    (cat === 'All' || p.category === cat) &&
+    (cat === 'All' || p.category === cat || (cat === 'Livestock' && p.isMarketListing)) &&
     (!search || p.name.toLowerCase().includes(search.toLowerCase()) || p.farmer.toLowerCase().includes(search.toLowerCase()))
   );
+
+  const loadMarketLivestock = async () => {
+    try {
+      const res = await fetch('http://localhost:3001/api/market/listings');
+      const data = await res.json();
+      if (data.success && data.items) {
+        const livestock = data.items.map(l => ({
+          id: 'market-' + l.id,
+          name: `${l.type}${l.breed ? ' · ' + l.breed : ''}`,
+          farmer: l.sellerName || 'Verified Farmer',
+          price: l.askingPrice,
+          unit: 'head',
+          location: l.location?.county || 'Kenya',
+          category: 'Livestock',
+          subCategory: l.negotiable ? 'Negotiable' : null,
+          image: '🐄',
+          photoUrl: l.photoUrl,
+          rating: 4.5,
+          phone: null,
+          isRegistered: true,
+          isMarketListing: true,
+          listingId: l.id,
+          passportId: l.passportId,
+          healthCount: l.healthCount || 0,
+          vetVerifiedCount: l.vetVerifiedCount || 0,
+        }));
+        setMarketLivestock(livestock);
+        console.log('🐄 Loaded', livestock.length, 'market livestock listings');
+      }
+    } catch (err) {
+      console.warn('Failed to load market livestock:', err.message);
+    }
+  };
 
   const sendMsg = () => {
     if (!msgText.trim() || !selectedFarmer) return;
@@ -399,12 +446,20 @@ export default function App() {
             </p>
 
             {filtered.map(p => (
-              <div key={p.id} style={{
-                background: p.isRegistered ? '#F0F9F0' : 'white',
-                margin:'8px 12px',padding:12,borderRadius:12,display:'flex',gap:12,alignItems:'center',
-                boxShadow:'0 1px 3px rgba(0,0,0,.08)',
-                border: p.isRegistered ? '2px solid #A5D6A7' : '1px solid #E0E0E0'
-              }}>
+              <div key={p.id}
+                onClick={() => {
+                  if (p.isMarketListing) {
+                    // Open marketplace detail for livestock listings
+                    window.dispatchEvent(new CustomEvent('fd:openMarketListing', { detail: { listingId: p.listingId } }));
+                  }
+                }}
+                style={{
+                  background: p.isRegistered ? '#F0F9F0' : 'white',
+                  margin:'8px 12px',padding:12,borderRadius:12,display:'flex',gap:12,alignItems:'center',
+                  boxShadow:'0 1px 3px rgba(0,0,0,.08)',
+                  border: p.isRegistered ? '2px solid #A5D6A7' : '1px solid #E0E0E0',
+                  cursor: p.isMarketListing ? 'pointer' : 'default'
+                }}>
                 <span style={{fontSize:45}}>{p.image}</span>
                 <div style={{flex:1}}>
                   <div style={{display:'flex',justifyContent:'space-between'}}>
@@ -416,6 +471,11 @@ export default function App() {
                       {p.isRegistered ? '✅ VERIFIED' : 'DEMO'}
                     </span>
                   </div>
+                  {p.healthCount > 0 && (
+                    <p style={{fontSize:10,color:'#01579B',fontWeight:'bold',margin:'2px 0'}}>
+                      🩺 {p.healthCount} health event{p.healthCount === 1 ? '' : 's'}{p.vetVerifiedCount > 0 ? ` · ${p.vetVerifiedCount} vet-verified` : ''}
+                    </p>
+                  )}
                   {p.subCategory && <p style={{fontSize:10,color:'#FF6F00',fontWeight:'bold',margin:'2px 0'}}>{p.subCategory}</p>}
                   <p style={{fontSize:12,color:'gray',margin:0}}>{p.farmer}</p>
                   <p style={{fontSize:11,color:'gray',margin:0}}>⭐ {p.rating} • 📍 {p.location}</p>
