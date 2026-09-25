@@ -34,7 +34,10 @@ const METHODS = [
 ];
 
 export default function HealthRecordModal({ animal, currentFarmer, currentVet, onClose, onUpdated }) {
-  const [view, setView] = useState('timeline'); // timeline | add-event
+  // Support animal._prefillVet = { role, name, userId, kvbVerified } to auto-open
+  // the add-event view with the vet role preselected.
+  const prefill = animal?._prefillVet || null;
+  const [view, setView] = useState(prefill ? 'add-event' : 'timeline'); // timeline | add-event
   const [events, setEvents] = useState([]);
   const [eventTypes, setEventTypes] = useState([]);
   const [commonProducts, setCommonProducts] = useState({});
@@ -44,7 +47,7 @@ export default function HealthRecordModal({ animal, currentFarmer, currentVet, o
 
   // Add-event form state
   const [form, setForm] = useState({
-    role: 'owner',
+    role: prefill?.role || 'owner',
     eventType: '',
     eventDate: new Date().toISOString().slice(0, 10),
     product: '',
@@ -54,8 +57,8 @@ export default function HealthRecordModal({ animal, currentFarmer, currentVet, o
     batchNumber: '',
     notes: '',
     photo: null,
-    vetId: '',
-    vetName: '',
+    vetId: prefill?.userId || '',
+    vetName: prefill?.name || '',
     neighborName: '',
   });
 

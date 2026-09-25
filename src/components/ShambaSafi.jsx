@@ -9,6 +9,7 @@ import PhotoGalleryModal from './PhotoGalleryModal';
 import TransferOwnershipModal from './TransferOwnershipModal';
 import KYCModal from './KYCModal';
 import HealthRecordModal from './HealthRecordModal';
+import SelfServiceOrDispatchModal from './SelfServiceOrDispatchModal';
 import { api } from '../services/api';
 import { normalizeKenyaPhone, isValidKenyaPhone } from '../utils/phone';
 
@@ -1659,6 +1660,8 @@ function VetModule() {
 
   const [sickTarget, setSickTarget] = useState(null);
   const [sickForm, setSickForm] = useState({ symptoms: [], symptomDetails: '', urgency: 'medium' });
+  const [selfServiceData, setSelfServiceData] = useState(null);
+  const [vetHealthTarget, setVetHealthTarget] = useState(null);
   const [myAnimals, setMyAnimals] = useState([]);
 
   useEffect(() => { loadAll(); }, []);
@@ -1719,13 +1722,17 @@ function VetModule() {
 
   const toggleSymptom = (symptomId) => {
     const has = sickForm.symptoms.includes(symptomId);
+    const next = has ? sickForm.symptoms.filter(s => s !== symptomId) : [...sickForm.symptoms, symptomId];
     setSickForm({
       ...sickForm,
-      symptoms: has ? sickForm.symptoms.filter(s => s !== symptomId) : [...sickForm.symptoms, symptomId],
+      symptoms: next,
     });
   };
 
-  const submitSickReport = async () => {
+  const submitSickReport = async (forceDispatch = false) => {
+    // Guard: when called as onClick={submitSickReport}, the first argument
+    // is a React event object. Only honor explicit `true`.
+    const force = forceDispatch === true;
     if (!sickTarget || sickForm.symptoms.length === 0) return;
     try {
       const result = await api.vet.reportSick({
@@ -1736,14 +1743,95 @@ function VetModule() {
         symptoms: sickForm.symptoms,
         symptomDetails: sickForm.symptomDetails,
         urgency: sickForm.urgency,
+        _forceDispatch: force,
       });
       if (!result.success) throw new Error(result.message);
+
+      if (result.selfServiceAvailable) {
+        setSelfServiceData({
+          animal: result.animal,
+          reporterVetId: result.reporterVetId,
+          reporterVetName: result.reporterVetName,
+        });
+        return;
+      }
+
       alert('Report submitted! ' + result.message);
       setSickTarget(null);
       setSickForm({ symptoms: [], symptomDetails: '', urgency: 'medium' });
       await loadAll();
       setView('my-reports');
     } catch (err) { alert('Error: ' + err.message); }
+  };
+
+  // Session 6.21: multi-role choice modal — rendered in both home and report-sick views
+  const renderVetHealthRecordModal = () => {
+    if (!vetHealthTarget) return null;
+    return (
+      <HealthRecordModal
+        animal={vetHealthTarget}
+        currentFarmer={myFarmer?.farmer ? { id: myFarmer.farmer.phone, fullName: myFarmer.farmer.fullName, phone: myFarmer.farmer.phone } : null}
+        currentVet={myVet || null}
+        onClose={() => setVetHealthTarget(null)}
+        onUpdated={async () => {
+          setVetHealthTarget(null);
+          await loadAll();
+        }}
+      />
+    );
+  };
+
+  const renderSelfServiceModal = () => {
+    if (!selfServiceData) return null;
+    return (
+      <SelfServiceOrDispatchModal
+        animal={selfServiceData.animal}
+        reporterVetName={selfServiceData.reporterVetName}
+        onSelfService={() => {
+          setVetHealthTarget({
+            passportId: selfServiceData.animal.passportId,
+            type: selfServiceData.animal.type,
+            breed: selfServiceData.animal.breed,
+            _prefillVet: {
+              role: 'vet',
+              name: selfServiceData.reporterVetName,
+              userId: myFarmer?.farmer?.phone,
+              kvbVerified: true,
+            },
+          });
+          setSelfServiceData(null);
+          setSickTarget(null);
+          setSickForm({ symptoms: [], symptomDetails: '', urgency: 'medium' });
+        }}
+        onRequestAnother={async () => {
+          const target = sickTarget;
+          const form = sickForm;
+          console.log('🟠 onRequestAnother called', { target, form });
+          setSelfServiceData(null);
+          if (!target) { alert('target is null — aborting'); return; }
+          try {
+            console.log('🟠 calling API with _forceDispatch: true');
+            const result = await api.vet.reportSick({
+              passportId: target.passportId,
+              farmerName: myFarmer?.farmer?.fullName || target.ownerName,
+              farmerPhone: myFarmer?.farmer?.phone || target.ownerPhone,
+              location: target.location,
+              symptoms: form.symptoms,
+              symptomDetails: form.symptomDetails,
+              urgency: form.urgency,
+              _forceDispatch: true,
+            });
+            if (!result.success) throw new Error(result.message);
+            alert('Dispatched: ' + result.message);
+            setSickTarget(null);
+            setSickForm({ symptoms: [], symptomDetails: '', urgency: 'medium' });
+            await loadAll();
+            setView('my-reports');
+          } catch (err) { alert('Error: ' + err.message); }
+        }}
+        onClose={() => setSelfServiceData(null)}
+      />
+    );
   };
 
   if (loading) return <div style={{padding:40,textAlign:'center'}}>Loading vet network...</div>;
@@ -1824,6 +1912,7 @@ function VetModule() {
             }}
           />
         )}
+
       </div>
     );
   }
@@ -1888,6 +1977,8 @@ function VetModule() {
   if (view === 'report-sick') {
     return (
       <div>
+        {renderVetHealthRecordModal()}
+        {renderSelfServiceModal()}
         <h4 style={{fontSize:16,marginBottom:12}}>Report Sick Animal</h4>
         {sickTarget ? (
           <div>
@@ -1917,7 +2008,7 @@ function VetModule() {
             <textarea value={sickForm.symptomDetails} onChange={e => setSickForm({...sickForm, symptomDetails: e.target.value})} placeholder="Describe what you've noticed..." rows={3} style={{...inputStyle, resize:'vertical'}} />
             <div style={{display:'flex',gap:8}}>
               <button onClick={() => setSickTarget(null)} style={{...primaryBtn, background:'#F0F0F0', color:'#666', flex:1}}>Cancel</button>
-              <button onClick={submitSickReport} disabled={sickForm.symptoms.length === 0} style={{...primaryBtn, background:'#E65100', flex:2}}>Submit Report</button>
+              <button onClick={() => submitSickReport(false)} disabled={sickForm.symptoms.length === 0} style={{...primaryBtn, background:'#E65100', flex:2}}>Submit Report</button>
             </div>
           </div>
         ) : (

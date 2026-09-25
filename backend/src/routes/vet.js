@@ -111,7 +111,7 @@ router.post('/:id/verify', (req, res) => {
 
 router.post('/sick/report', async (req, res) => {
   try {
-    const { passportId, farmerId, farmerName, farmerPhone, location, symptoms, symptomDetails, urgency, photoUrls } = req.body;
+    const { passportId, farmerId, farmerName, farmerPhone, location, symptoms, symptomDetails, urgency, photoUrls, _forceDispatch } = req.body;
 
     if (!passportId) return res.status(400).json({ success: false, message: 'Animal passport required' });
     if (!farmerName || !farmerPhone) return res.status(400).json({ success: false, message: 'Farmer name and phone required' });
@@ -138,7 +138,7 @@ router.post('/sick/report', async (req, res) => {
     } catch (e) { /* silent */ }
     const reporterIsVerifiedVet = !!(reporterVet && reporterVet.verified);
 
-    if (reporterIsOwner && reporterIsVerifiedVet) {
+    if (reporterIsOwner && reporterIsVerifiedVet && !_forceDispatch) {
       console.log('🩺 Multi-role gate: reporter is verified vet + owner → self-service offered');
       return res.json({
         success: true,
