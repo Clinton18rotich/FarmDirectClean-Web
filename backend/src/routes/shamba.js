@@ -216,6 +216,78 @@ router.post('/livestock/:passportId/update-ownership', (req, res) => {
   }
 });
 
+/**
+ * Health events — two-tier health record (self-reported + vet-verified).
+ * Session 6.13
+ */
+router.get('/health-event-types', (req, res) => {
+  const healthEvents = require('../services/healthEvents');
+  const stats = healthEvents.getStats();
+  res.json({
+    success: true,
+    eventTypes: stats.eventTypes,
+    commonProducts: stats.commonProducts,
+  });
+});
+
+router.post('/livestock/:passportId/health-event', (req, res) => {
+  try {
+    const healthEvents = require('../services/healthEvents');
+    const result = healthEvents.recordHealthEvent(req.params.passportId, req.body || {});
+    if (result.error) return res.status(400).json({ success: false, message: result.error });
+    res.json({ success: true, event: result.event });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+router.get('/livestock/:passportId/health-events', (req, res) => {
+  try {
+    const healthEvents = require('../services/healthEvents');
+    const result = healthEvents.listHealthEvents(req.params.passportId, req.query || {});
+    res.json({ success: true, events: result.events, count: result.count });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+router.get('/livestock/:passportId/health-event/:eventId', (req, res) => {
+  try {
+    const healthEvents = require('../services/healthEvents');
+    const event = healthEvents.getEvent(req.params.eventId);
+    if (!event) return res.status(404).json({ success: false, message: 'Event not found' });
+    res.json({ success: true, event });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+router.post('/livestock/:passportId/health-event/:eventId/countersign', (req, res) => {
+  try {
+    const healthEvents = require('../services/healthEvents');
+    const result = healthEvents.countersignEvent(
+      req.params.passportId,
+      req.params.eventId,
+      req.body || {}
+    );
+    if (result.error) return res.status(400).json({ success: false, message: result.error });
+    res.json({ success: true, event: result.event });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+router.delete('/livestock/:passportId/health-event/:eventId', (req, res) => {
+  try {
+    const healthEvents = require('../services/healthEvents');
+    const result = healthEvents.deleteEvent(req.params.eventId, req.query.by);
+    if (result.error) return res.status(400).json({ success: false, message: result.error });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
 router.post('/livestock/:passportId/photos', (req, res) => {
   try {
     const { ownerId, photos } = req.body;
