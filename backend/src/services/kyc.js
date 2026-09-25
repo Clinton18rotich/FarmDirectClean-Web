@@ -18,7 +18,8 @@ const verifications = storage.objectToMap(storage.load('kyc_verifications', {}))
 // PRICING & TIERS
 // ═════════════════════════════════════════════════════
 
-const KYC_FEE_KES = 500;
+const KYC_FEE_KES = 500;   // legacy — role-specific fee comes from kycRoles
+const kycRoles = require('./kycRoles');
 
 const SELLER_TIERS = {
   basic: {
@@ -268,11 +269,30 @@ function getProvider() {
  * Status: pending_payment
  */
 async function createVerificationRequest(data) {
-  const { idNumber, fullName, dateOfBirth, userId, userType } = data;
+  const {
+    idNumber, fullName, dateOfBirth, userId, userType,
+    role = 'farmer',
+    documents = {},           // { key: { url, number?, expiry? } }
+    metadata = {},            // role-specific extras (businessName, location, ...)
+  } = data;
 
-  // 1. Validate input
+  // 1. Validate role
+  const roleConfig = kycRoles.getRole(role);
+  if (!roleConfig) return { error: 'Unknown role: ' + role };
+
+  // 2. Validate input
   if (!idNumber) return { error: 'ID number required' };
   if (!fullName) return { error: 'Full name required' };
+
+  // 2b. Validate required documents
+  for (const doc of roleConfig.documents) {
+    if (doc.required && (!documents[doc.key] || !documents[doc.key].url)) {
+      return { error: `Required document missing: ${doc.label}` };
+    }
+    if (doc.hasNumber && documents[doc.key] && !documents[doc.key].number) {
+      return { error: `${doc.label} requires a number` };
+    }
+  }
 
   const cleanId = normalizeIdNumber(idNumber);
   if (!isValidKenyaId(cleanId)) {
@@ -300,18 +320,24 @@ async function createVerificationRequest(data) {
 
   // 4. Create request with pending_payment status
   const id = 'KYC-' + Date.now().toString(36).toUpperCase();
+  const fee = roleConfig.fee;
   const record = {
     id,
     userId,
     userType: userType || 'unknown',
+    role,
+    roleLabel: roleConfig.label,
     idNumber: cleanId,
     idNumberMasked: '****' + cleanId.slice(-4),
     fullName,
     dateOfBirth: dateOfBirth || null,
     provider: getProvider().name,
-    status: 'pending_payment',
+    status: 'pending_payment',       // pending_payment | paid | in_review | verified | rejected | expired
     verified: false,
-    fee: KYC_FEE_KES,
+    fee,
+    documents: {},                   // populated in 4b below
+    metadata: metadata || {},
+    expiresAt: null,                 // set when verified if any document has expiry
     paidAt: null,
     paymentRef: null,
     processedAt: null,
@@ -319,12 +345,26 @@ async function createVerificationRequest(data) {
     confidence: null,
     officialRecord: null,
     createdAt: new Date().toISOString(),
+    history: [{ at: new Date().toISOString(), event: 'created', by: userId, note: 'Role: ' + role }],
   };
+
+  // 4b. Attach documents with metadata
+  for (const [key, doc] of Object.entries(documents || {})) {
+    if (!doc) continue;
+    record.documents[key] = {
+      url: doc.url || null,
+      number: doc.number || null,
+      expiry: doc.expiry || null,
+      uploadedAt: new Date().toISOString(),
+      verifiedAt: null,
+      verifiedBy: null,
+    };
+  }
 
   verifications.set(id, record);
   persist();
 
-  console.log('🪪 KYC request created:', id, '|', userType, '|', record.idNumberMasked, '| fee: KES', KYC_FEE_KES);
+  console.log('🪪 KYC request created:', id, '|', role, '|', record.idNumberMasked, '| fee: KES', fee);
 
   return { record };
 }
@@ -378,6 +418,31 @@ async function runVerification(verificationId) {
 
   if (providerResult.verified) {
     record.status = 'verified';
+    record.history = record.history || [];
+    record.history.push({
+      at: new Date().toISOString(),
+      event: 'verified',
+      by: 'provider:' + provider.name,
+      note: 'Role: ' + (record.role || 'farmer'),
+    });
+    // Role service activation hook — notify the role-specific service
+    try {
+      const role = record.role || 'farmer';
+      if (role === 'vet') {
+        const vet = require('./vet');
+        if (typeof vet.activateVetByUserId === 'function') {
+          vet.activateVetByUserId(record.userId, record);
+        }
+      } else if (role === 'rider') {
+        const riders = require('./riders');
+        if (typeof riders.activateRiderByUserId === 'function') {
+          riders.activateRiderByUserId(record.userId, record);
+        }
+      }
+      // slaughterhouse / butcher / handler: add hooks when services land
+    } catch (err) {
+      console.warn('⚠️  Role activation hook failed:', record.role, err.message);
+    }
   } else if (providerResult.error) {
     record.status = 'error';
   } else {
@@ -481,6 +546,9 @@ function canSell(userId, amount = 0) {
 }
 
 module.exports = {
+  getRoleConfig: (role) => kycRoles.getRole(role),
+  listRoles: () => kycRoles.listRoles(),
+
   // Constants
   KYC_FEE_KES,
   SELLER_TIERS,

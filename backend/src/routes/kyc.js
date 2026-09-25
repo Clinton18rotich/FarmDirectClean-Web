@@ -109,7 +109,12 @@ module.exports = router;
  */
 router.post('/request', async (req, res) => {
   try {
-    const { idNumber, fullName, dateOfBirth, userId, userType } = req.body;
+    const {
+      idNumber, fullName, dateOfBirth, userId, userType,
+      role = 'farmer',
+      documents = {},
+      metadata = {},
+    } = req.body;
 
     if (!idNumber || !fullName || !userId) {
       return res.status(400).json({ success: false, message: 'ID number, full name, and user ID required' });
@@ -117,6 +122,7 @@ router.post('/request', async (req, res) => {
 
     const result = await kyc.createVerificationRequest({
       idNumber, fullName, dateOfBirth, userId, userType,
+      role, documents, metadata,
     });
 
     if (result.error) {
@@ -131,18 +137,45 @@ router.post('/request', async (req, res) => {
       });
     }
 
+    const record = result.record;
     res.json({
       success: true,
-      verification: result.record,
+      verification: record,
       payment: {
-        amount: kyc.KYC_FEE_KES,
+        amount: record.fee,
         currency: 'KES',
-        description: 'Identity verification',
+        description: `KYC verification — ${record.roleLabel || role}`,
         nextStep: 'Pay via M-Pesa to complete verification',
       },
     });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * GET /api/kyc/roles
+ * List all KYC roles and their requirements.
+ */
+router.get('/roles', (req, res) => {
+  try {
+    res.json({ success: true, roles: kyc.listRoles() });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+/**
+ * GET /api/kyc/roles/:role
+ * Get requirements for a single role (used by role-aware frontend).
+ */
+router.get('/roles/:role', (req, res) => {
+  try {
+    const role = kyc.getRoleConfig(req.params.role);
+    if (!role) return res.status(404).json({ success: false, message: 'Unknown role' });
+    res.json({ success: true, role });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
   }
 });
 
