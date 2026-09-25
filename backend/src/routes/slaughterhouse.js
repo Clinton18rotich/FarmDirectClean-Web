@@ -264,4 +264,19 @@ router.get('/slaughter/:id/exemption', (req, res) => {
   res.json({ success: true, exemption: request.exemption || null });
 });
 
+/**
+ * Reveal the full owner contact for a meat token.
+ * Logged — every reveal gets a revealId.
+ */
+router.post('/meat/:token/reveal-contact', (req, res) => {
+  try {
+    const { sessionId, reason } = req.body || {};
+    const result = shamba.revealMeatContact(req.params.token, { sessionId, reason });
+    if (result.error) return res.status(400).json({ success: false, message: result.error });
+    res.json({ success: true, contact: result.contact, revealId: result.revealId });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
 module.exports = router;

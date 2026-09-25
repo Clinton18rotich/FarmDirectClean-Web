@@ -139,6 +139,7 @@ api.slaughterhouse = {
   },
   getSlaughterRequest: (id) => request(`/api/slaughterhouse/slaughter/${id}`),
   verifyMeat: (token) => request(`/api/slaughterhouse/meat/verify/${token}`),
+  revealMeatContact: (token) => request(`/api/slaughterhouse/meat/${token}/reveal-contact`, { method: 'POST', body: {} }),
   reportMeatFraud: (token, data) => request(`/api/slaughterhouse/meat/${token}/report`, { method: 'POST', body: data }),
 };
 

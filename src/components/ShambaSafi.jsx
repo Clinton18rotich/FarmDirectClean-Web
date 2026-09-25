@@ -1501,14 +1501,33 @@ function VerifyMeatView({ onBack }) {
   const [token, setToken] = useState('');
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const [revealedPhone, setRevealedPhone] = useState(null);
+  const [revealId, setRevealId] = useState(null);
 
   const verify = async () => {
-    setResult(null); setError(null);
+    setResult(null); setError(null); setRevealedPhone(null); setRevealId(null);
+    const clean = token.trim().toUpperCase();
     try {
-      const r = await api.meatHandler.getChain(token.trim().toUpperCase());
-      if (!r.success) throw new Error('Not found');
-      setResult(r.chain);
-    } catch (err) { setError('Token not found'); }
+      // Primary: slaughterhouse.verifyMeat — includes donkey warning + slaughter story
+      const s = await api.slaughterhouse.verifyMeat(clean);
+      if (s && s.success !== false) {
+        setResult({ ...s, _fromVerify: true });
+      } else {
+        // Fallback: chain of custody
+        const r = await api.meatHandler.getChain(clean);
+        if (!r.success) throw new Error('Not found');
+        setResult({ chain: r.chain, _fromChain: true });
+      }
+    } catch (err) {
+      // Try chain as fallback
+      try {
+        const r = await api.meatHandler.getChain(clean);
+        if (!r.success) throw new Error('Not found');
+        setResult({ chain: r.chain, _fromChain: true });
+      } catch (e2) {
+        setError('Token not found');
+      }
+    }
   };
 
   return (
@@ -1519,8 +1538,76 @@ function VerifyMeatView({ onBack }) {
       {error && <div style={{background:'#FFEBEE',padding:12,borderRadius:10,marginTop:12}}><strong style={{color:'#C62828',fontSize:12}}>{error}</strong></div>}
       {result && (
         <div style={{marginTop:12}}>
+          {/* DONKEY / high-scrutiny warning — from verifyMeat */}
+          {(result.highScrutiny || (result.species || '').toLowerCase() === 'donkey' || result.notForHumanConsumption) && (
+            <div style={{background:'#FFEBEE',border:'2px solid #C62828',borderRadius:12,padding:14,marginBottom:12}}>
+              <strong style={{color:'#C62828',fontSize:15,display:'block'}}>🛡️ {result.warning || 'Protected species'}</strong>
+              {result.notForHumanConsumption && (
+                <p style={{margin:'6px 0 0',fontSize:12,color:'#B71C1C',fontWeight:'bold'}}>
+                  NOT FOR HUMAN CONSUMPTION
+                </p>
+              )}
+              {result.intendedUse && (
+                <p style={{margin:'4px 0 0',fontSize:11,color:'#666'}}>
+                  Intended use: <strong>{result.intendedUse.replace('_', ' ')}</strong>
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Slaughter story */}
+          {result.slaughterStory && (
+            <div style={{background:'#FFF8E1',border:'1px solid #FFD54F',borderRadius:12,padding:14,marginBottom:12}}>
+              <strong style={{fontSize:12,color:'#E65100',display:'block',marginBottom:8}}>📋 SLAUGHTER STORY</strong>
+              <div style={{fontSize:11,color:'#333',lineHeight:1.7}}>
+                <div><strong>Exemption:</strong> {(result.slaughterStory.exemptionType || '').replace('_', ' ')}</div>
+                <div><strong>Legal ref:</strong> {result.slaughterStory.exemptionRef || '—'}</div>
+                <div><strong>Authorized by:</strong> {result.slaughterStory.authorizedBy || '—'}</div>
+                <div><strong>Original owner:</strong> {result.slaughterStory.originalOwner || '—'}</div>
+                <div><strong>Facility:</strong> {result.slaughterStory.slaughterhouse || '—'}</div>
+                {result.slaughterStory.ownerConsent && (
+                  <div style={{marginTop:6,paddingTop:6,borderTop:'1px solid #FFE082'}}>
+                    <strong>Owner consent:</strong>
+                    <div style={{paddingLeft:10}}>• Replied: <strong>{result.slaughterStory.ownerConsent.response || 'YES'}</strong></div>
+                    <div style={{paddingLeft:10}}>
+                      • Via: <strong>{revealedPhone || result.slaughterStory.ownerConsent.viaPhone || '—'}</strong>
+                      {!revealedPhone && result.slaughterStory.ownerConsent.viaPhone && (
+                        <button
+                          onClick={async () => {
+                            if (!window.confirm('Revealing the full phone number is logged for audit. Continue?')) return;
+                            try {
+                              const r = await api.slaughterhouse.revealMeatContact(token.trim().toUpperCase());
+                              if (r.success) {
+                                setRevealedPhone(r.contact.phone);
+                                setRevealId(r.revealId);
+                              } else {
+                                alert(r.message || 'Failed to reveal');
+                              }
+                            } catch (e) {
+                              alert('Failed to reveal: ' + e.message);
+                            }
+                          }}
+                          style={{ marginLeft:6, background:'none', border:'none', color:'#1976D2', fontSize:10, cursor:'pointer', textDecoration:'underline', padding:0 }}
+                        >
+                          Show full number
+                        </button>
+                      )}
+                    </div>
+                    {revealedPhone && (
+                      <div style={{marginTop:4, padding:'6px 8px', background:'#FFF8E1', borderRadius:6, fontSize:10}}>
+                        <span style={{color:'#E65100'}}>✓ Reveal logged ({revealId})</span>
+                      </div>
+                    )}
+                    <div style={{paddingLeft:10}}>• At: {result.slaughterStory.ownerConsent.respondedAt ? new Date(result.slaughterStory.ownerConsent.respondedAt).toLocaleString() : '—'}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           <div style={{background:'#E8F5E9',padding:14,borderRadius:12,border:'2px solid #4CAF50',marginBottom:12}}>
             <strong style={{color:'#2E7D32',fontSize:14}}>VERIFIED</strong>
+            {result.species && <span style={{fontSize:11,color:'#666',marginLeft:8}}>({result.species})</span>}
           </div>
           {result.sourceAnimal && (
             <div style={{background:'white',borderRadius:12,padding:14,border:'1px solid #E0E0E0',marginBottom:8}}>

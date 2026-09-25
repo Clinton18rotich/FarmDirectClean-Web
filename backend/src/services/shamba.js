@@ -1144,8 +1144,8 @@ function completeSlaughter(requestId, numberOfPackages = 1) {
     validUntil: request.exemption.validUntil,
     ownerConsent: {
       respondedAt: request.ownerRespondedAt,
-      responseText: request.ownerResponseText,
-      viaPhone: request.ownerPhone,
+      response: 'YES',                                   // public — approval code withheld
+      viaPhone: maskPhone(request.ownerPhone),           // masked: +2547***9744
       smsRecordId: request.smsRecordId,
     },
     originalOwner: request.ownerName,
@@ -1166,6 +1166,7 @@ function completeSlaughter(requestId, numberOfPackages = 1) {
       highScrutiny: isDonkey,
       intendedUse,
       slaughterStory,
+      _ownerConsentRaw: isDonkey ? { responseText: request.ownerResponseText, viaPhoneRaw: request.ownerPhone } : null,
       slaughterhouseId: request.slaughterhouseId,
       slaughterhouseName: request.slaughterhouseName,
       farmerName: request.ownerName,
@@ -1206,6 +1207,44 @@ function completeSlaughter(requestId, numberOfPackages = 1) {
 /**
  * Verify meat token (consumer action)
  */
+/**
+ * Sanitize the slaughterStory before returning to consumers.
+ * - Strips any 'responseText' field (raw SMS with the approval code)
+ * - Normalizes viaPhone to masked form
+ * - Removes _ownerConsentRaw and any other internal-only fields
+ * Handles both NEW records (already sanitized at write) and OLD records
+ * (pre-6.18) so nothing leaks through verifyMeat.
+ */
+function sanitizeSlaughterStoryForConsumer(story) {
+  if (!story) return null;
+  const safe = { ...story };
+  if (safe.ownerConsent) {
+    const oc = { ...safe.ownerConsent };
+    // Strip raw consent text (may contain the approval code)
+    delete oc.responseText;
+    delete oc.responseRaw;
+    // Ensure `response` is present — derive from old data if needed
+    if (!oc.response && safe.ownerConsent.responseText) {
+      const m = String(safe.ownerConsent.responseText).trim().match(/^(YES|NO)/i);
+      oc.response = m ? m[1].toUpperCase() : 'YES';
+    }
+    if (!oc.response) oc.response = 'YES';
+    // Mask phone if it looks unmasked (has more than 3 consecutive digits after prefix)
+    if (oc.viaPhone && typeof oc.viaPhone === 'string') {
+      const digits = oc.viaPhone.replace(/\D/g, '');
+      // If it's a full unmasked number (10+ digits), mask it
+      if (digits.length >= 9 && !oc.viaPhone.includes('*')) {
+        oc.viaPhone = maskPhone(oc.viaPhone);
+      }
+    }
+    safe.ownerConsent = oc;
+  }
+  // Strip any internal fields
+  delete safe._ownerConsentRaw;
+  delete safe.responseText;
+  return safe;
+}
+
 function verifyMeat(token) {
   const record = meatTokens.get(token);
   if (!record) {
@@ -1220,8 +1259,8 @@ function verifyMeat(token) {
       warning: 'DONKEY — Protected species. Kenya Slaughter Ban 2020.',
       intendedUse: record.intendedUse || 'disposal',
       notForHumanConsumption: record.intendedUse !== 'human_consumption',
-      slaughterStory: record.slaughterStory || null,
-      record,
+      slaughterStory: sanitizeSlaughterStoryForConsumer(record.slaughterStory),
+      // `record` intentionally omitted — contains raw internal data (ownerConsentRaw, etc.)
       message: record.intendedUse === 'human_consumption'
         ? 'This meat is from a legally exempted donkey slaughter.'
         : 'This meat is NOT for human consumption. See details below.',
@@ -1277,7 +1316,49 @@ module.exports.lookupAnimal = lookupAnimal;
 module.exports.createSlaughterRequest = createSlaughterRequest;
 module.exports.approveSlaughter = approveSlaughter;
 module.exports.rejectSlaughter = rejectSlaughter;
+/**
+ * Reveal the full contact of the owner who consented to slaughter.
+ * Every reveal is logged with a revealId for audit.
+ */
+function revealMeatContact(token, { sessionId, reason } = {}) {
+  const record = meatTokens.get(token);
+  if (!record) return { error: 'Token not found' };
+
+  let request = null;
+  for (const r of slaughterRequests.values()) {
+    if (r.meatTokens && r.meatTokens.includes(token)) {
+      request = r;
+      break;
+    }
+  }
+  if (!request) return { error: 'No slaughter request found for this token' };
+
+  const revealId = 'REVEAL-' + Date.now().toString(36).toUpperCase();
+  const reveal = {
+    id: revealId,
+    token,
+    when: new Date().toISOString(),
+    sessionId: sessionId || null,
+    reason: reason || null,
+  };
+
+  request.contactReveals = request.contactReveals || [];
+  request.contactReveals.push(reveal);
+  persistSlaughter();
+
+  console.log('👁️  Contact revealed:', token, '| reveal:', revealId, '| reason:', reason || 'none');
+
+  return {
+    contact: {
+      phone: request.ownerPhone,
+      ownerName: request.ownerName,
+    },
+    revealId,
+  };
+}
+
 module.exports.completeSlaughter = completeSlaughter;
+module.exports.revealMeatContact = revealMeatContact;
 module.exports.submitExemption = submitExemption;
 module.exports.approveExemption = approveExemption;
 module.exports.rejectExemption = rejectExemption;
