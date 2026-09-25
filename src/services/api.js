@@ -282,6 +282,8 @@ api.landProtection = {
 
 // KYC — Identity verification + seller tiers
 api.kyc = {
+  roles: (role) => request(role ? `/api/kyc/roles/${role}` : '/api/kyc/roles'),
+  roleConfig: (role) => request(`/api/kyc/roles/${role}`),
   // Public
   config: () => request('/api/kyc/config'),
   tiers: () => request('/api/kyc/tiers'),

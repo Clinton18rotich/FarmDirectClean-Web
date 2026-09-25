@@ -7,6 +7,7 @@ import ListForSaleModal from './ListForSaleModal';
 import PhotoViewer from './PhotoViewer';
 import PhotoGalleryModal from './PhotoGalleryModal';
 import TransferOwnershipModal from './TransferOwnershipModal';
+import KYCModal from './KYCModal';
 import { api } from '../services/api';
 import { normalizeKenyaPhone, isValidKenyaPhone } from '../utils/phone';
 
@@ -1517,6 +1518,7 @@ function VetModule() {
   const [view, setView] = useState('home');
   const [myFarmer, setMyFarmer] = useState(null);
   const [myVet, setMyVet] = useState(null);
+  const [kycVetOpen, setKycVetOpen] = useState(false);
   const [stats, setStats] = useState(null);
   const [sickReports, setSickReports] = useState([]);
   const [vets, setVets] = useState([]);
@@ -1655,6 +1657,25 @@ function VetModule() {
             </div>
             <p style={{fontSize:11,color:'#666',margin:'2px 0'}}>{myVet.isGovt ? 'Govt Vet' : 'Private'} - {myVet.specializations?.join(', ')}</p>
             <p style={{fontSize:11,color:'#666',margin:'2px 0'}}>{myVet.location?.county}</p>
+            {!myVet.verified && (
+              <div style={{marginTop:10, background:'#FFF8E1', border:'1px solid #FFD54F', borderRadius:10, padding:12}}>
+                <strong style={{fontSize:12, color:'#E65100'}}>🪪 Verify your credentials to activate</strong>
+                <p style={{fontSize:11, color:'#BF360C', margin:'4px 0 8px', lineHeight:1.5}}>
+                  Upload your KVB license + practicing certificate. KES 1,000 one-time. Approved vets appear in the dispatch pool and can sign treatments.
+                </p>
+                <button
+                  onClick={() => setKycVetOpen(true)}
+                  style={{ width:'100%', background:'#E65100', color:'white', border:'none', padding:'12px', borderRadius:10, fontSize:12, fontWeight:'bold', cursor:'pointer' }}
+                >
+                  Verify Now — KES 1,000
+                </button>
+              </div>
+            )}
+            {myVet.verified && myVet.kvbLicenseVerified && (
+              <div style={{marginTop:8, display:'inline-block', background:'#E8F5E9', border:'1px solid #A5D6A7', borderRadius:8, padding:'4px 10px'}}>
+                <span style={{fontSize:10, color:'#2E7D32', fontWeight:'bold'}}>✓ KVB VERIFIED</span>
+              </div>
+            )}
           </div>
         ) : (
           <button onClick={() => setView('register-vet')} style={{...primaryBtn, background:'#1565C0'}}>Register as Vet</button>
@@ -1663,6 +1684,23 @@ function VetModule() {
         {myFarmer && <button onClick={() => setView('report-sick')} style={{...primaryBtn, background:'#E65100'}}>Report Sick Animal</button>}
         <button onClick={() => setView('my-reports')} style={{...primaryBtn, background:'white', color:'#1565C0', border:'2px solid #1565C0'}}>My Reports ({myReports.length})</button>
         <button onClick={() => setView('find-vets')} style={{...primaryBtn, background:'white', color:'#1565C0', border:'2px solid #1565C0'}}>Find Vets ({vets.length})</button>
+
+        {/* KYC MODAL for vet verification */}
+        {kycVetOpen && myVet && (
+          <KYCModal
+            userId={myVet.phone}
+            userType="vet"
+            role="vet"
+            userName={myVet.fullName}
+            userPhone={myVet.phone}
+            onClose={() => setKycVetOpen(false)}
+            onVerified={async () => {
+              setKycVetOpen(false);
+              await loadAll();
+              alert('✅ Your vet credentials are verified. You can now be dispatched to cases.');
+            }}
+          />
+        )}
       </div>
     );
   }

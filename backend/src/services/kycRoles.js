@@ -75,6 +75,19 @@ const ROLES = {
     autoApprovalEligible: false,
     description: 'Transport or handle meat between facilities',
   },
+  fisherman: {
+    id: 'fisherman',
+    label: 'Fisherman / Aquatic Seller',
+    fee: 500,
+    identity: ['national_id', 'selfie'],
+    documents: [
+      { key: 'kefs_fishing_license', label: 'KeFS fishing license (Kenya Fisheries Service)', required: true, hasNumber: true, hasExpiry: true },
+      { key: 'bmu_membership', label: 'Beach Management Unit (BMU) membership', required: false },
+      { key: 'boat_registration', label: 'Boat registration (if applicable)', required: false, hasNumber: true },
+    ],
+    autoApprovalEligible: false,
+    description: 'Sell fish and aquatic products (regulated by KeFS, not DVS)',
+  },
 };
 
 function getRole(roleId) {

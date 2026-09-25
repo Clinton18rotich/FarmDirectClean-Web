@@ -554,7 +554,35 @@ function getStats() {
   };
 }
 
+/**
+ * KYC activation hook — called from kyc.js when a vet's KYC verifies.
+ * userId is the vet's phone in our current scheme.
+ */
+function activateVetByUserId(userId, kycRecord) {
+  if (!userId) return null;
+  const cleanUserId = String(userId).replace(/\D/g, '').slice(-9);
+  const vet = Array.from(vets.values()).find(v => {
+    const vClean = String(v.phone || '').replace(/\D/g, '').slice(-9);
+    return vClean && vClean === cleanUserId;
+  });
+  if (!vet) {
+    console.warn('⚠️  activateVetByUserId: no vet found for', userId);
+    return null;
+  }
+  vet.status = 'active';
+  vet.verified = true;
+  vet.verifiedAt = new Date().toISOString();
+  vet.verifiedBy = 'kyc:' + (kycRecord?.provider || 'unknown');
+  vet.kvbLicenseVerified = !!(kycRecord?.documents?.kvb_license?.url);
+  vet.kycId = kycRecord?.id || null;
+  vet.kycDocuments = kycRecord?.documents || {};
+  persist();
+  console.log('✅ Vet activated via KYC:', vet.id, '|', vet.fullName);
+  return vet;
+}
+
 module.exports = {
+  activateVetByUserId,
   // Constants
   SPECIALIZATIONS,
   VET_TYPES,

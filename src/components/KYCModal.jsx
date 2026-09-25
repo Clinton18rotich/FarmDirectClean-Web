@@ -1,53 +1,110 @@
-import React, { useState, useEffect } from 'react';
+// FILE: src/components/KYCModal.jsx
+// Role-aware KYC modal. Pass role="vet"|"rider"|"farmer"|...
+// Fetches the role's document requirements from the backend and renders
+// the appropriate form. Backward compatible: no role = farmer.
+import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
-import { normalizeKenyaPhone, isValidKenyaPhone } from '../utils/phone';
+import { resizeImageFile } from '../utils/imageUtils';
 
 const inputStyle = { width:'100%', padding:'14px 16px', borderRadius:10, border:'2px solid #E0E0E0', fontSize:15, marginBottom:8, boxSizing:'border-box', fontFamily:'inherit', color:'#333' };
 const labelStyle = { fontSize:12, fontWeight:'bold', color:'#555', display:'block', marginBottom:4, marginTop:10 };
 const primaryBtn = { width:'100%', padding:16, color:'white', border:'none', borderRadius:25, fontSize:16, fontWeight:'bold', cursor:'pointer', marginTop:8, boxSizing:'border-box' };
+const ghostBtn = { ...primaryBtn, background:'#F0F0F0', color:'#666' };
 
-export default function KYCModal({ userId, userType, userName, userPhone, onClose, onVerified }) {
+export default function KYCModal({
+  userId, userType, userName, userPhone,
+  role = 'farmer',
+  onClose, onVerified,
+}) {
   const [step, setStep] = useState('form'); // form | payment | verifying | done
+  const [roleConfig, setRoleConfig] = useState(null);
   const [form, setForm] = useState({
     idNumber: '',
     fullName: userName || '',
     dateOfBirth: '',
     phone: userPhone || '',
   });
-  const [tiers, setTiers] = useState(null);
+  const [documents, setDocuments] = useState({});  // { key: { url, number?, expiry? } }
   const [kycId, setKycId] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [submittingDoc, setSubmittingDoc] = useState(null); // which doc is uploading
+  const pollRef = useRef(null);
 
+  // Fetch role requirements
   useEffect(() => {
-    api.kyc.tiers().then(r => setTiers(r)).catch(() => {});
-  }, []);
+    api.kyc.roles(role)
+      .then(r => { if (r.success) setRoleConfig(r.role); })
+      .catch(() => {
+        // Fallback: farmer defaults if endpoint missing
+        setRoleConfig({
+          id: 'farmer', label: 'Farmer', fee: 500,
+          identity: ['national_id', 'selfie'], documents: [],
+        });
+      });
+  }, [role]);
 
   const isFormValid = () => {
     const idClean = form.idNumber.replace(/\D/g, '');
-    return idClean.length >= 7 && idClean.length <= 9 && form.fullName.length > 2 && form.dateOfBirth;
+    if (idClean.length < 7 || idClean.length > 9) return false;
+    if (!form.fullName || form.fullName.length < 3) return false;
+    if (!form.dateOfBirth) return false;
+    // Required docs
+    if (roleConfig?.documents) {
+      for (const doc of roleConfig.documents) {
+        if (doc.required && !documents[doc.key]?.url) return false;
+        if (doc.hasNumber && documents[doc.key]?.url && !documents[doc.key]?.number) return false;
+      }
+    }
+    return true;
+  };
+
+  // Handle document file upload
+  const handleDocFile = async (docKey, file) => {
+    if (!file) return;
+    setSubmittingDoc(docKey);
+    setError(null);
+    try {
+      const resized = await resizeImageFile(file, { maxDim: 1000, quality: 0.7 });
+      setDocuments(prev => ({
+        ...prev,
+        [docKey]: { ...(prev[docKey] || {}), url: resized },
+      }));
+    } catch (err) {
+      setError('Document upload failed: ' + err.message);
+    } finally {
+      setSubmittingDoc(null);
+    }
+  };
+
+  const handleDocField = (docKey, field, value) => {
+    setDocuments(prev => ({
+      ...prev,
+      [docKey]: { ...(prev[docKey] || {}), [field]: value },
+    }));
   };
 
   const submitKYC = async () => {
     setError(null);
     setLoading(true);
     try {
-      // 1. Create verification request
       const reqResult = await api.kyc.createRequest({
         userId,
-        userType,
+        userType: userType || role,
+        role,
         idNumber: form.idNumber.replace(/\D/g, ''),
         fullName: form.fullName,
         dateOfBirth: form.dateOfBirth,
+        documents,
+        metadata: {},
       });
-
       if (!reqResult.success) throw new Error(reqResult.message);
       if (reqResult.existing && reqResult.existing.verified) {
         setStep('done');
         setLoading(false);
+        if (onVerified) onVerified(reqResult.existing);
         return;
       }
-
       setKycId(reqResult.verification.id);
       setStep('payment');
     } catch (err) {
@@ -60,50 +117,30 @@ export default function KYCModal({ userId, userType, userName, userPhone, onClos
   const payAndVerify = async () => {
     setError(null);
     setLoading(true);
-    setStep('verifying');
     try {
-      // Trigger M-Pesa STK push (backend auto-simulates when MPESA_ENV is unconfigured)
-      const result = await api.kyc.pay(kycId, form.phone);
-
-      if (!result.success) throw new Error(result.message);
-
-      // Simulated mode: backend already ran verification, we're done
-      if (result.mode === 'not_configured') {
-        if (result.verification?.verified) {
-          setStep('done');
-          if (onVerified) onVerified(result.verification);
-        } else {
-          setError(result.verification?.reason || 'Verification failed');
-          setStep('form');
-        }
-        setLoading(false);
-        return;
-      }
-
-      // Real STK pushed — poll until the Safaricom callback lands
-      if (!result.stk) throw new Error('No STK push sent — check phone number');
+      const phone = form.phone || userPhone;
+      if (!phone) throw new Error('Phone number required');
+      const payResult = await api.kyc.pay(kycId, phone);
+      if (!payResult.success) throw new Error(payResult.message || 'Payment initiation failed');
+      setStep('verifying');
       pollStatus(kycId, 0);
     } catch (err) {
       setError(err.message);
-      setStep('payment');
       setLoading(false);
     }
   };
 
   const pollStatus = async (id, attempt) => {
-    const MAX = 20;         // 20 × 3s = 60s max wait
+    const MAX_ATTEMPTS = 40;
     const INTERVAL = 3000;
-
-    if (attempt >= MAX) {
-      setError('Payment not confirmed after 60s. If you paid, wait a moment and try again.');
-      setStep('payment');
+    if (attempt >= MAX_ATTEMPTS) {
+      setError('Verification is taking longer than expected. Check your status later.');
+      setStep('form');
       setLoading(false);
       return;
     }
-
     try {
       const s = await api.kyc.statusById(id);
-
       if (s.status === 'verified') {
         setStep('done');
         setLoading(false);
@@ -116,22 +153,24 @@ export default function KYCModal({ userId, userType, userName, userPhone, onClos
         setLoading(false);
         return;
       }
-      // Still awaiting — poll again
-      setTimeout(() => pollStatus(id, attempt + 1), INTERVAL);
+      pollRef.current = setTimeout(() => pollStatus(id, attempt + 1), INTERVAL);
     } catch (err) {
-      // Transient network error — keep polling
-      setTimeout(() => pollStatus(id, attempt + 1), INTERVAL);
+      pollRef.current = setTimeout(() => pollStatus(id, attempt + 1), INTERVAL);
     }
   };
+
+  useEffect(() => () => { if (pollRef.current) clearTimeout(pollRef.current); }, []);
+
+  const fee = roleConfig?.fee || 500;
+  const roleLabel = roleConfig?.label || 'Farmer / Seller';
 
   return (
     <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.7)',zIndex:800,display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={onClose}>
       <div style={{background:'white',borderRadius:'20px 20px 0 0',padding:20,maxWidth:480,width:'100%',maxHeight:'92vh',overflowY:'auto'}} onClick={e => e.stopPropagation()}>
-
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
           <div>
-            <h3 style={{margin:0,color:'#1565C0',fontSize:18}}>🪪 Verify Your Identity</h3>
-            <p style={{fontSize:11,color:'#666',margin:'2px 0 0'}}>One-time KES {tiers?.kycFee || 500}</p>
+            <h3 style={{margin:0,color:'#1565C0',fontSize:18}}>🪪 Verify as {roleLabel}</h3>
+            <p style={{fontSize:11,color:'#666',margin:'2px 0 0'}}>One-time KES {fee}</p>
           </div>
           <button onClick={onClose} style={{background:'none',border:'none',fontSize:24,cursor:'pointer',color:'#666'}}>✕</button>
         </div>
@@ -142,23 +181,20 @@ export default function KYCModal({ userId, userType, userName, userPhone, onClos
           </div>
         )}
 
-        {step === 'form' && (
+        {/* FORM STEP */}
+        {step === 'form' && roleConfig && (
           <>
             <div style={{background:'#E3F2FD',padding:12,borderRadius:10,marginBottom:12,border:'1px solid #90CAF9'}}>
-              <strong style={{fontSize:12,color:'#0D47A1'}}>🛡️ Why verify?</strong>
-              <ul style={{margin:'6px 0 0',paddingLeft:18,fontSize:11,color:'#1565C0',lineHeight:1.5}}>
-                <li>Sell up to KES 500,000/month (vs KES 5,000)</li>
-                <li>Unlimited product listings</li>
-                <li>Get verified ✅ badge</li>
-                <li>Escrow protection for buyers</li>
-                <li>Prevent fake accounts</li>
-              </ul>
+              <strong style={{fontSize:12,color:'#0D47A1'}}>🛡️ What this unlocks</strong>
+              <p style={{margin:'6px 0 0',fontSize:11,color:'#1565C0',lineHeight:1.5}}>
+                {roleConfig.description || 'Get verified to unlock full platform access.'}
+              </p>
             </div>
 
             <label style={labelStyle}>National ID Number *</label>
             <input
               value={form.idNumber}
-              onChange={e => setForm({...form, idNumber: e.target.value.replace(/\D/g, '').slice(0, 9)})}
+              onChange={e => setForm({...form, idNumber: e.target.value.replace(/\D/g,'').slice(0,9)})}
               placeholder="12345678"
               inputMode="numeric"
               style={{...inputStyle, fontFamily:'monospace', letterSpacing:2, textAlign:'center', fontSize:18}}
@@ -181,82 +217,158 @@ export default function KYCModal({ userId, userType, userName, userPhone, onClos
               style={inputStyle}
             />
 
-            <label style={labelStyle}>Phone (for M-Pesa payment)</label>
+            <label style={labelStyle}>M-Pesa Phone Number</label>
             <input
               value={form.phone}
               onChange={e => setForm({...form, phone: e.target.value})}
-              onBlur={e => e.target.value && setForm({...form, phone: normalizeKenyaPhone(e.target.value)})}
-              placeholder="0712345678"
+              placeholder="07XX XXX XXX"
               type="tel"
               style={inputStyle}
             />
 
-            <button onClick={submitKYC} disabled={!isFormValid() || loading} style={{...primaryBtn, background: isFormValid() && !loading ? '#1565C0' : '#ccc'}}>
-              {loading ? '⏳ Processing...' : 'Continue to Payment →'}
-            </button>
+            {/* Role-specific document uploads */}
+            {roleConfig.documents && roleConfig.documents.length > 0 && (
+              <div style={{marginTop:16,paddingTop:16,borderTop:'2px solid #F0F0F0'}}>
+                <h4 style={{fontSize:13,color:'#333',margin:'0 0 8px'}}>
+                  📄 Required Documents
+                </h4>
+                <p style={{fontSize:11,color:'#666',margin:'0 0 12px',lineHeight:1.5}}>
+                  These will be reviewed manually. Clear photos help speed up approval.
+                </p>
 
-            <p style={{fontSize:10,color:'#999',textAlign:'center',marginTop:12}}>
-              🔒 Your ID is never shared. Only used to verify identity.
-            </p>
+                {roleConfig.documents.map(doc => {
+                  const docData = documents[doc.key] || {};
+                  const isUploading = submittingDoc === doc.key;
+                  return (
+                    <div key={doc.key} style={{background:'#F9FAFB',border:'1px solid #E0E0E0',borderRadius:10,padding:12,marginBottom:10}}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6}}>
+                        <strong style={{fontSize:12,color:'#333',flex:1}}>
+                          {doc.label} {doc.required && <span style={{color:'#C62828'}}>*</span>}
+                        </strong>
+                        {docData.url && <span style={{fontSize:10,color:'#2E7D32',fontWeight:'bold'}}>✓ Uploaded</span>}
+                      </div>
+
+                      {doc.hasNumber && (
+                        <>
+                          <label style={{fontSize:10,fontWeight:'bold',color:'#555',display:'block',marginBottom:4}}>Document Number</label>
+                          <input
+                            value={docData.number || ''}
+                            onChange={e => handleDocField(doc.key, 'number', e.target.value)}
+                            placeholder="e.g. KVB-1234"
+                            style={{...inputStyle, fontSize:13, padding:'10px 12px'}}
+                          />
+                        </>
+                      )}
+
+                      {doc.hasExpiry && (
+                        <>
+                          <label style={{fontSize:10,fontWeight:'bold',color:'#555',display:'block',marginBottom:4}}>Expiry Date</label>
+                          <input
+                            type="date"
+                            value={docData.expiry || ''}
+                            onChange={e => handleDocField(doc.key, 'expiry', e.target.value)}
+                            style={{...inputStyle, fontSize:13, padding:'10px 12px'}}
+                          />
+                        </>
+                      )}
+
+                      <input
+                        type="file"
+                        accept="image/*"
+                        id={`kyc-doc-${doc.key}`}
+                        onChange={(e) => { handleDocFile(doc.key, e.target.files?.[0]); e.target.value = ''; }}
+                        style={{display:'none'}}
+                      />
+                      <button
+                        type="button"
+                        disabled={isUploading}
+                        onClick={() => document.getElementById(`kyc-doc-${doc.key}`).click()}
+                        style={{
+                          width:'100%',
+                          padding:'10px',
+                          marginTop:6,
+                          borderRadius:8,
+                          border: docData.url ? '2px solid #2E7D32' : '2px dashed #90CAF9',
+                          background: docData.url ? '#E8F5E9' : 'white',
+                          color: docData.url ? '#2E7D32' : '#1565C0',
+                          fontSize:11,
+                          fontWeight:'bold',
+                          cursor: isUploading ? 'wait' : 'pointer',
+                          opacity: isUploading ? 0.6 : 1,
+                        }}
+                      >
+                        {isUploading ? '⏳ Processing...' : docData.url ? '🔄 Replace photo' : '📷 Upload photo'}
+                      </button>
+
+                      {docData.url && (
+                        <img
+                          src={docData.url}
+                          alt={doc.label}
+                          style={{width:'100%',maxHeight:100,objectFit:'cover',borderRadius:8,marginTop:6}}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <button
+              onClick={submitKYC}
+              disabled={!isFormValid() || loading || submittingDoc}
+              style={{...primaryBtn, background: (!isFormValid() || loading || submittingDoc) ? '#CCC' : '#1565C0'}}
+            >
+              {loading ? '⏳ Submitting...' : `Continue to Payment — KES ${fee}`}
+            </button>
           </>
         )}
 
+        {/* PAYMENT STEP */}
         {step === 'payment' && (
           <>
-            <div style={{textAlign:'center',padding:'20px 0'}}>
-              <span style={{fontSize:60}}>📱</span>
-              <h3 style={{margin:'12px 0 4px',color:'#1565C0'}}>Pay KES {tiers?.kycFee || 500}</h3>
-              <p style={{fontSize:12,color:'#666',margin:'0 0 20px'}}>
-                Via M-Pesa to complete verification
+            <div style={{background:'#F9FAFB',borderRadius:12,padding:16,marginBottom:16,textAlign:'center'}}>
+              <p style={{margin:0,fontSize:11,color:'#666',textTransform:'uppercase',letterSpacing:0.5}}>Amount to pay</p>
+              <p style={{margin:'6px 0 0',fontSize:32,fontWeight:'bold',color:'#1565C0'}}>KES {fee}</p>
+              <p style={{margin:'6px 0 0',fontSize:11,color:'#999'}}>{roleLabel} verification</p>
+            </div>
+
+            <div style={{background:'#FFF8E1',border:'1px solid #FFD54F',borderRadius:10,padding:12,marginBottom:12}}>
+              <p style={{margin:0,fontSize:11,color:'#E65100',lineHeight:1.5}}>
+                You'll receive an STK prompt on <strong>{form.phone || userPhone}</strong> for KES {fee}. Enter your M-Pesa PIN to proceed.
               </p>
             </div>
 
-            <div style={{background:'#F9FAFB',padding:14,borderRadius:10,marginBottom:16,border:'1px solid #E0E0E0'}}>
-              <p style={{fontSize:12,margin:'4px 0'}}><strong>ID:</strong> <span style={{fontFamily:'monospace'}}>****{form.idNumber.slice(-4)}</span></p>
-              <p style={{fontSize:12,margin:'4px 0'}}><strong>Name:</strong> {form.fullName}</p>
-              <p style={{fontSize:12,margin:'4px 0'}}><strong>Amount:</strong> KES {tiers?.kycFee || 500}</p>
-              <p style={{fontSize:12,margin:'4px 0'}}><strong>Phone:</strong> {form.phone}</p>
-            </div>
-
-            <button onClick={payAndVerify} disabled={loading} style={{...primaryBtn, background: !loading ? '#4CAF50' : '#ccc'}}>
-              {loading ? '⏳ Processing...' : `✅ Pay KES ${tiers?.kycFee || 500} Now`}
+            <button onClick={payAndVerify} disabled={loading} style={{...primaryBtn, background: loading ? '#CCC' : '#1565C0'}}>
+              {loading ? '⏳ Initiating...' : `💰 Pay KES ${fee} via M-Pesa`}
             </button>
-
-            <button onClick={() => setStep('form')} disabled={loading} style={{...primaryBtn, background:'none', color:'#666', marginTop:4}}>
-              ← Back to Edit
-            </button>
-
-            <p style={{fontSize:10,color:'#999',textAlign:'center',marginTop:12}}>
-              You'll receive an M-Pesa prompt on your phone. Enter your PIN to pay.
-            </p>
+            <button onClick={() => setStep('form')} disabled={loading} style={ghostBtn}>← Back</button>
           </>
         )}
 
+        {/* VERIFYING STEP */}
         {step === 'verifying' && (
-          <div style={{textAlign:'center',padding:'40px 20px'}}>
-            <span style={{fontSize:60}}>📱</span>
-            <h3 style={{margin:'12px 0 4px',color:'#1565C0'}}>Waiting for M-Pesa...</h3>
-            <p style={{fontSize:12,color:'#666'}}>Enter your M-Pesa PIN on your phone</p>
-            <p style={{fontSize:11,color:'#999',marginTop:16}}>This usually takes 10–30 seconds</p>
+          <div style={{textAlign:'center',padding:'30px 0'}}>
+            <div style={{fontSize:56,marginBottom:12}}>📱</div>
+            <strong style={{fontSize:16,color:'#333',display:'block',marginBottom:8}}>Verifying...</strong>
+            <p style={{fontSize:13,color:'#666',margin:0,lineHeight:1.5}}>
+              Checking your identity and documents. This usually takes under a minute.
+            </p>
+            <div style={{marginTop:20,display:'flex',justifyContent:'center'}}>
+              <div style={{width:36,height:36,border:'4px solid #E0E0E0',borderTopColor:'#1565C0',borderRadius:'50%',animation:'spin 1s linear infinite'}} />
+            </div>
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
           </div>
         )}
 
+        {/* DONE STEP */}
         {step === 'done' && (
-          <div style={{textAlign:'center',padding:'20px 0'}}>
-            <span style={{fontSize:80}}>✅</span>
-            <h2 style={{color:'#2E7D32',margin:'12px 0 8px'}}>Verified!</h2>
-            <div style={{background:'#E8F5E9',padding:14,borderRadius:12,margin:'12px 0',textAlign:'left'}}>
-              <strong style={{color:'#2E7D32',fontSize:13}}>🎉 You are now a Verified Seller</strong>
-              <ul style={{margin:'8px 0 0',paddingLeft:18,fontSize:12,color:'#2E7D32',lineHeight:1.6}}>
-                <li>Sell up to KES 500,000/month</li>
-                <li>Unlimited product listings</li>
-                <li>Verified ✅ badge on profile</li>
-                <li>Escrow protection active</li>
-              </ul>
-            </div>
-            <button onClick={onClose} style={{...primaryBtn, background:'#4CAF50'}}>
-              ✅ Start Selling
-            </button>
+          <div style={{textAlign:'center',padding:'30px 0'}}>
+            <div style={{fontSize:56,marginBottom:12}}>✅</div>
+            <strong style={{fontSize:18,color:'#2E7D32',display:'block',marginBottom:8}}>Verified!</strong>
+            <p style={{fontSize:13,color:'#666',margin:0,lineHeight:1.5}}>
+              You're now a verified {roleLabel}.
+            </p>
+            <button onClick={onClose} style={{...primaryBtn, background:'#2E7D32', marginTop:20}}>Close</button>
           </div>
         )}
       </div>
