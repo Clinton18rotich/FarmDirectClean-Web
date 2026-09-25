@@ -13,6 +13,18 @@ const primaryBtn = { width:'100%', padding:14, color:'white', border:'none', bor
 
 const ANIMAL_TYPES = ['', 'Cow', 'Goat', 'Sheep', 'Pig', 'Chicken', 'Camel', 'Donkey', 'Rabbit'];
 const KENYA_COUNTIES = ['', 'Bomet', 'Nakuru', 'Nairobi', 'Kiambu', 'Narok', 'Kericho', 'Kisumu', 'Mombasa', 'Uasin Gishu', 'Kajiado', 'Machakos'];
+const TYPE_CHIPS = [
+  { value: '',        label: 'All',      icon: '' },
+  { value: 'Cow',     label: 'Cattle',   icon: '🐄' },
+  { value: 'Goat',    label: 'Goats',    icon: '🐐' },
+  { value: 'Sheep',   label: 'Sheep',    icon: '🐑' },
+  { value: 'Pig',     label: 'Pigs',     icon: '🐖' },
+  { value: 'Chicken', label: 'Chickens', icon: '🐔' },
+  { value: 'Camel',   label: 'Camels',   icon: '🐪' },
+  { value: 'Donkey',  label: 'Donkeys',  icon: '🫏' },
+  { value: 'Rabbit',  label: 'Rabbits',  icon: '🐰' },
+];
+
 const SORTS = [
   { value: '', label: 'Newest first' },
   { value: 'price_asc', label: 'Price: low to high' },
@@ -139,6 +151,25 @@ function BrowseTab({
 }) {
   return (
     <>
+      {/* Type chips */}
+      <div style={{ display:'flex', gap:6, overflowX:'auto', paddingBottom:8, marginBottom:6 }}>
+        {TYPE_CHIPS.map(c => (
+          <button
+            key={c.value}
+            onClick={() => setFilters({ ...filters, type: c.value })}
+            style={{
+              padding:'8px 14px', borderRadius:20, whiteSpace:'nowrap', flexShrink:0,
+              border: filters.type === c.value ? '2px solid #2E7D32' : '1px solid #E0E0E0',
+              background: filters.type === c.value ? '#E8F5E9' : 'white',
+              color: filters.type === c.value ? '#2E7D32' : '#333',
+              fontSize:12, fontWeight:'bold', cursor:'pointer',
+            }}
+          >
+            {c.icon} {c.label}
+          </button>
+        ))}
+      </div>
+
       {/* Filter bar */}
       <div style={{ display:'flex', gap:8, marginBottom:12 }}>
         <button
@@ -245,6 +276,11 @@ function ListingCard({ listing, onOpen, formatPrice }) {
         <p style={{ fontSize:11, color:'#666', margin:'4px 0 0' }}>
           {listing.gender ? `${listing.gender} · ` : ''}{listing.age ? `${listing.age} · ` : ''}{listing.location?.county || 'Kenya'}
         </p>
+        {listing.type === 'Donkey' && (
+          <div style={{ marginTop:6, background:'#FFF8E1', border:'1px solid #FFD54F', borderRadius:6, padding:'4px 8px' }}>
+            <span style={{ fontSize:9, color:'#E65100', fontWeight:'bold' }}>🛡️ Protected by Kenya's Slaughter Ban (2020)</span>
+          </div>
+        )}
         <div style={{ marginTop:8, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           <strong style={{ fontSize:15, color:'#2E7D32' }}>{formatPrice(listing.askingPrice)}</strong>
           <span style={{ fontSize:10, color:'#999' }}>{listing.views || 0} views · {listing.offerCount || 0} offers</span>

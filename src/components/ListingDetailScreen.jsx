@@ -69,6 +69,17 @@ export default function ListingDetailScreen({ listingId, currentFarmer, onClose,
 
   return (
     <Shell onClose={onClose}>
+      {/* Donkey protection banner — Kenya Slaughter Ban 2020 */}
+      {animal.type === 'Donkey' && (
+        <div style={{ background:'#FFF8E1', borderBottom:'2px solid #FFD54F', padding:12, fontSize:12, color:'#E65100', lineHeight:1.5 }}>
+          <strong>🛡️ Kenya's Slaughter Ban (2020) protects donkeys.</strong>
+          <p style={{ margin:'4px 0 0' }}>
+            This animal is offered for <strong>work, breeding, or companionship</strong> — <strong>not for slaughter</strong>.
+            Donkey slaughter is illegal in Kenya. Any buyer seeking slaughter is committing an offence.
+          </p>
+        </div>
+      )}
+
       {/* Theft banner */}
       {animal.isReportedStolen && (
         <div style={{ background:'#C62828', color:'white', padding:14, textAlign:'center', fontWeight:'bold', fontSize:13 }}>
