@@ -166,6 +166,13 @@ Zero PSP license required — FarmDirect never holds client funds.
 | reconciliation.js | ~230 | Payment recovery |
 | pricing.js | ~232 | Fee calculations |
 | revenue.js | ~95 | Revenue tracking |
+| kycRoles.js | ~120 | Role-aware KYC config (7 roles: farmer/rider/vet/slaughterhouse/butcher/handler/fisherman) |
+| exemptionProviders/ | ~150 | Legal exemption verification — manual now, DVS-ready |
+| vet.js | ~620 | Veterinary professionals + sick reports + treatment dispatch |
+| healthEvents.js | ~250 | Two-tier health records (self-reported + vet-verified) — Session 6.13 |
+| location.js | ~150 | Kenya county/ward/sub-county lookup |
+| sms.js | ~200 | Africa's Talking SMS (stub in dev, real in prod) |
+| theftAlert.js | ~180 | Theft broadcast tiers (high-value: Cow/Camel/Donkey) |
 
 ---
 
@@ -194,13 +201,28 @@ POST   /api/trades/:id/release
 GET    /api/trades/:id
 GET    /api/trades/user/:userId
 
-POST   /api/kyc/request
+POST   /api/kyc/request                            (role-aware: farmer/rider/vet/...)
 POST   /api/kyc/:id/pay
+GET    /api/kyc/roles                              (Session 6.12a — list roles)
+GET    /api/kyc/roles/:role                        (requirements per role)
+
 POST   /api/land-protection/parcels/register
 POST   /api/land-protection/parcels/:id/pay
 
+POST   /api/shamba/livestock/:id/transfer          (Session 5A — gift/inheritance/dowry/sale)
+
+POST   /api/slaughterhouse/slaughter/request
+POST   /api/slaughterhouse/slaughter/:id/exemption (Session 6.2 — donkey legal gate)
+GET    /api/slaughterhouse/slaughter/:id/exemption
+POST   /api/slaughterhouse/slaughter/:id/complete
+GET    /api/slaughterhouse/meat/verify/:token      (donkey warning + slaughter story)
+
+POST   /api/admin/exemption/queue                  (Session 6.2 — review queue)
+POST   /api/admin/exemption/:id/approve
+POST   /api/admin/exemption/:id/reject
+
 POST   /api/webhook/mpesa      (Safaricom callback)
-POST   /api/webhook/sms        (Africa's Talking inbound)
+POST   /api/webhook/sms        (Africa's Talking inbound — YES/NO/CONFIRM/DISPUTE/WEIGH)
 
 ```
 
@@ -374,10 +396,27 @@ Session 4 — Trade Orchestration
 
 What's Next
 
-· Session 5 — Frontend integration (Checkout rebuild, trade tracking, release code UI)
+Session 5A ✅ Photos, photo gallery, transfer ownership (shipped 2026-09-23)
+Session 5B ✅ Buyer marketplace UI — 9 screens, full trade loop verified (2026-09-24)
+Session 6.1 ✅ Donkey filter chips + slaughter-ban warning banners
+Session 6.2 ✅ Donkey slaughter SMS gate + legal exemption + traceability
+Session 6.12a ✅ Role-aware KYC refactor (7 roles)
+Session 6.12b ✅ Vet activation + role-aware KYCModal + fisherman placeholder
+
+Upcoming (unblocked):
+· Session 6.13 — Health events (two-tier: self-reported + vet-verified)
+· Session 6.14 — Document templates (auto-fill vaccination certs, permits)
+· Session 4B — Multi-leg shipment tracking (Track nav: booking office → transit → delivery)
+· Session 6.11 — Real chat (threads scoped to trades)
+· Session 6.7 — Livestock inheritance (reuses transferOwnership)
+· Session 6.8 — Bulk / share sales (sell N of M animals)
+· Session 6.9 — Land enhancements (geodesic area, perimeter, GPS accuracy)
+· Session 13 — Crops vertical (batch registry, grade certs, weight proof)
+
+Blocked (external):
+· Session 5C — Real eConfirm escrow (pending their API reply)
+· Session 9 — USSD *384# (pending Africa's Talking production)
 · Production — Company registration → Paybill → Daraja production
-· eConfirm — Reply pending on splits capability
-· Future verticals — Crops, meat, inputs (same plugin pattern)
 
 ---
 
@@ -399,9 +438,82 @@ Backend services ✅ Complete
 Backend routes ✅ Complete
 Webhook integration ✅ Complete
 M-Pesa integration ✅ Verified vs Safaricom sandbox
-Escrow integration ⚠️ Waiting on eConfirm API access
+Escrow integration ⚠️ Simulated — waiting on eConfirm API access
 Frontend (KYC + land) ✅ Complete
-Frontend (market + trades) ⚠️ Session 5
+Frontend (market + trades) ✅ Complete — full loop verified 2026-09-24
+Donkey enforcement (Slaughter Ban 2020) ✅ Complete — SMS gate + exemption + traceability
+Role-aware KYC ✅ Complete — 7 roles
+Vet verification (KVB) ✅ Complete — KYCModal role='vet' wired
+Health events (two-tier) 🚧 In progress — Session 6.13
+Multi-leg shipment tracking ⏳ Next up — Session 4B
+Real chat ⏳ Planned — Session 6.11
+
+---
+
+---
+
+## Verticals & Roles
+
+FarmDirect is organised as **verticals** (livestock, fisheries, crops, meat, inputs) that share a common **KYC + trade + delivery** infrastructure. Each vertical has its own regulator, its own facilities, and its own product model.
+
+### Registered KYC roles (7)
+
+| Role | Fee | Regulator | Purpose |
+|------|-----|-----------|---------|
+| `farmer` | KES 500 | County Agriculture | Sell livestock + crops |
+| `rider` | KES 500 | NTSA (vehicle) | Deliver goods |
+| `vet` | KES 1,000 | KVB (Kenya Veterinary Board) | Treat, verify, sign |
+| `slaughterhouse` | KES 2,000 | DVS | Slaughter livestock |
+| `butcher` | KES 1,000 | County Health | Sell meat |
+| `meat_handler` | KES 300 | County Health | Transport / handle meat |
+| `fisherman` | KES 500 | **KeFS** (Kenya Fisheries Service) | Sell fish & aquatic products |
+
+Every role shares the same KYC pipeline (`kyc.js` + `kycRoles.js`). Adding a new role is a config change, not a code change.
+
+### Fisherman / Aquatic vertical (planned)
+
+Fishermen are **not** farmers — they need a distinct vertical because:
+
+- **Different regulator**: KeFS, not DVS or county agriculture
+- **Different facilities**: **landing sites** (not slaughterhouses) — regulated by Beach Management Units (BMUs)
+- **Different product model**: **batch/weight-based** (kg of tilapia) — not individual animal passports
+- **Different handling**: cold chain (ice, refrigeration), not heat/slaughter
+- **Different buyer flow**: hotels/restaurants direct, not peer-to-peer farmers
+- **Different documents**: KeFS fishing license, BMU membership, boat registration — **not** KVB license or DVS permits
+
+**Aquatic products in scope:** fish (tilapia, catfish, Nile perch), prawns, crabs, octopus, seaweed, sea cucumbers.
+
+**Why not fold into farmer?** Because forcing fishermen through farmer KYC causes:
+- Wrong documents requested (KVB instead of KeFS)
+- Wrong marketplace filters (fish under "livestock")
+- Wrong regulations (veterinary law applied to fisheries)
+- Wrong trust model (cold-chain proof ≠ animal passport)
+
+**Status:** `fisherman` role already registered in `kycRoles.js`. Requires:
+1. `fisheries.js` service (parallel to `shamba.js` for fish batches)
+2. `LandingSite` facility model (parallel to `Slaughterhouse`)
+3. Marketplace "Fisheries" filter chip
+4. Batch registry UI (register a catch, not an individual fish)
+
+### Other future verticals
+
+| Vertical | Regulator | Notes |
+|----------|-----------|-------|
+| **Wildlife farming** (crocodile, ostrich) | KWS | Different permit, individual animal model similar to livestock |
+| **Beekeeping** (honey, beeswax) | County Agriculture | Can fold under `farmer` — no slaughter, no cold chain |
+| **Crops** (maize, beans, vegetables) | KEPHIS | Batch registry + grade certs + weight proof (Session 13) |
+| **Input suppliers** (seeds, fertilizer) | KEBS | SKU-based, not batch or passport (Session 14) |
+| **Fish processing** (smoked, dried) | KeFS + County Health | Like butcher but for fish |
+
+### Design principle
+
+**KYC is the shared layer. Each vertical owns its own service, marketplace filter, and facilities model.** Adding a vertical means:
+- 1 new entry in `kycRoles.js` (5 minutes)
+- 1 new service file (e.g. `fisheries.js`)
+- 1 new facility type (e.g. `LandingSite`)
+- 1 new marketplace filter chip
+
+No refactor of existing code. This is why the role-aware KYC refactor (Session 6.12a) mattered.
 
 ---
 
