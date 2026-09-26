@@ -17,6 +17,7 @@ import React, { useState, useEffect } from 'react';
 import { ALL_PRODUCTS, CATEGORIES, CHAT_FARMERS, RIDERS } from './data/farmData';
 import './App.css';
 import AlertsScreen from './components/AlertsScreen';
+import { api } from './services/api';
 import KYCModal from './components/KYCModal';
 
 export default function App() {
@@ -36,6 +37,7 @@ export default function App() {
 
   const [myFarmer, setMyFarmer] = useState(null);
   const [myBuyer, setMyBuyer] = useState(null);
+  const [chatUnread, setChatUnread] = useState(0);
   const [showAuth, setShowAuth] = useState(false);
   const [authTab, setAuthTab] = useState('signin');
   const [showMarketplace, setShowMarketplace] = useState(false);
@@ -115,6 +117,30 @@ export default function App() {
       if (savedRider) setRider(JSON.parse(savedRider));
     } catch (e) { /* ignore */ }
   }, []);
+
+  // Session 6.11g: poll unread chat count
+  // Session 6.11g: poll unread chat count
+  // Session 6.11g: poll unread chat count
+  const chatUserId = myFarmer?.farmer?.phone || myBuyer?.phone || null;
+  useEffect(() => {
+    if (!chatUserId) { setChatUnread(0); return; }
+    const fetchUnread = async () => {
+      try {
+        const res = await api.chat.unreadCount(chatUserId);
+        if (res && res.success) setChatUnread(res.count || 0);
+      } catch (e) {
+        // Poll fails silently — user doesn't need to know
+      }
+    };
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 10000);
+    return () => clearInterval(interval);
+  }, [chatUserId]);
+
+  // Clear badge when user is on the Chat tab
+  useEffect(() => {
+    if (tab === 1 && chatUserId) setChatUnread(0);
+  }, [tab, chatUserId]);
 
   // Session 6.4b: listen for tap on a Home livestock card → open marketplace detail
   useEffect(() => {
@@ -733,7 +759,21 @@ export default function App() {
         <nav style={{position:'fixed',bottom:0,width:'100%',maxWidth:450,background:'#4CAF50',display:'flex',justifyContent:'space-around',padding:'8px 0 10px',zIndex:100}}>
           {tabs.map((t, i) => (
             <div key={i} onClick={() => setTab(i)} style={{display:'flex',flexDirection:'column',alignItems:'center',color:'white',fontSize:9,cursor:'pointer',opacity:tab===i?1:.7,fontWeight:tab===i?'bold':'normal'}}>
-              <span style={{fontSize:20}}>{t.icon}</span>{t.label}
+              <span style={{fontSize:20,position:'relative'}}>
+                {t.icon}
+                {t.label === 'Chat' && chatUnread > 0 && (
+                  <span style={{
+                    position:'absolute', top:-4, right:-10,
+                    background:'#FF1744', color:'white',
+                    borderRadius:10, minWidth:16, height:16,
+                    padding:'0 4px', fontSize:9, fontWeight:'bold',
+                    display:'flex', alignItems:'center', justifyContent:'center',
+                    boxShadow:'0 1px 2px rgba(0,0,0,0.3)',
+                  }}>
+                    {chatUnread > 99 ? '99+' : chatUnread}
+                  </span>
+                )}
+              </span>{t.label}
             </div>
           ))}
         </nav>
