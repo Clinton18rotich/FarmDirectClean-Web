@@ -5,6 +5,7 @@ import { api } from '../services/api';
 import PhotoViewer from './PhotoViewer';
 import UnlockContactModal from './UnlockContactModal';
 import MakeOfferModal from './MakeOfferModal';
+import ThreadView from './ThreadView';
 
 const card = { background:'white', border:'1px solid #E0E0E0', borderRadius:12, padding:14, marginBottom:12 };
 const sectionTitle = { fontSize:12, fontWeight:'bold', color:'#555', margin:'0 0 8px', textTransform:'uppercase', letterSpacing:0.5 };
@@ -19,6 +20,8 @@ export default function ListingDetailScreen({ listingId, currentFarmer, onClose,
   const [activePhoto, setActivePhoto] = useState(0);
   const [showUnlock, setShowUnlock] = useState(false);
   const [showOffer, setShowOffer] = useState(false);
+  const [activeThreadId, setActiveThreadId] = useState(null);
+  const [creatingThread, setCreatingThread] = useState(false);
 
   const buyerId = currentFarmer?.id || null;
 
@@ -49,6 +52,38 @@ export default function ListingDetailScreen({ listingId, currentFarmer, onClose,
       </Shell>
     );
   }
+
+  const handleMessageSeller = async () => {
+    if (!currentFarmer?.id) {
+      alert('Please sign in first');
+      return;
+    }
+    if (creatingThread) return;
+    setCreatingThread(true);
+    try {
+      const buyerId = currentFarmer.id;
+      const sellerId = data?.seller?.id;
+      if (!sellerId) throw new Error('Seller info missing');
+
+      const res = await api.chat.findOrCreateThread({
+        listingId: data.listing.id,
+        participants: [buyerId, sellerId],
+        context: {
+          passportId: data.animal.passportId,
+          listingTitle: `${data.animal.type}${data.animal.breed ? ' · ' + data.animal.breed : ''}`,
+          listingPhotoUrl: data.animal.photoUrl || null,
+        },
+      });
+      if (!res.success) throw new Error(res.message || 'Failed to open chat');
+      const threadId = (res.thread && res.thread.id) || null;
+      if (!threadId) throw new Error('No thread returned');
+      setActiveThreadId(threadId);
+    } catch (err) {
+      alert('Could not open chat: ' + err.message);
+    } finally {
+      setCreatingThread(false);
+    }
+  };
 
   if (error || !data) {
     return (
@@ -283,12 +318,21 @@ export default function ListingDetailScreen({ listingId, currentFarmer, onClose,
         )}
 
         {isListable && isUnlocked && (
-          <button
-            onClick={() => setShowOffer(true)}
-            style={{ ...primaryBtn, background:'#2E7D32' }}
-          >
-            📨 Make Offer
-          </button>
+          <>
+            <button
+              onClick={handleMessageSeller}
+              disabled={creatingThread}
+              style={{ ...primaryBtn, background:'#1976D2', marginBottom:8, opacity: creatingThread ? 0.7 : 1 }}
+            >
+              {creatingThread ? '⏳ Opening chat...' : '💬 Message Seller'}
+            </button>
+            <button
+              onClick={() => setShowOffer(true)}
+              style={{ ...primaryBtn, background:'#2E7D32' }}
+            >
+              📨 Make Offer
+            </button>
+          </>
         )}
 
         <button
@@ -298,6 +342,15 @@ export default function ListingDetailScreen({ listingId, currentFarmer, onClose,
           ← Back to Marketplace
         </button>
       </div>
+
+      {activeThreadId && (
+        <ThreadView
+          threadId={activeThreadId}
+          currentUser={{ id: currentFarmer?.id || currentFarmer?.phone, phone: currentFarmer?.phone, fullName: currentFarmer?.fullName }}
+          onClose={() => setActiveThreadId(null)}
+          onOpenListing={() => { setActiveThreadId(null); }}
+        />
+      )}
 
       {showUnlock && (
         <UnlockContactModal
