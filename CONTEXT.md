@@ -870,3 +870,37 @@ Google account penetration in rural Kenya is low. Most farmers have a phone numb
 - Google is a convenience layer for urban buyers (hotels, restaurants)
 
 Both routes must work. Neither replaces the other.
+
+---
+
+## Known Scaling Limit — Client-Side Data Loading (2026-09-26)
+
+**Current behavior:** `loadRegisteredFarmers()` in App.jsx fetches
+`/api/farmer/list` which returns every farmer + every product in the
+entire system. `loadMarketLivestock()` similarly fetches every market
+listing. Client-side filters by category/search/phone.
+
+**Scaling cliff:** ~10,000 products. Beyond that:
+- JSON payload exceeds ~10MB → slow/hung on 3G
+- Client-side filter on large array → 100ms+ freeze per render
+- Memory pressure on cheap Android devices
+
+**Production fix (~2 hours, Option B):**
+- New endpoint: `GET /api/market/stats` → returns aggregate counts
+  (totalProducts, myProductCount, byCategory, byCounty) without rows
+- Paginate `/api/farmer/list` and `/api/market/listings`
+  (add `?page=1&limit=100`)
+- Home fetches page 1 + stats, not the full catalog
+- `myLiveProductCount` reads from server stats, not client filter
+- Listings use cursor-based pagination + infinite scroll
+
+**Full-scale fix (2-3 sessions, Session 15-ish):**
+- Migrate persistence from JSON files (storage.js) to SQLite or
+  similar with indexes
+- Cursor-based listing endpoints
+- Server-side aggregation views
+
+**Not urgent:** current architecture is fine for demo + early pilot
+(<5,000 products). Revisit at pilot scale.
+
+**Logged:** 2026-09-26 by request during product-count fix.
