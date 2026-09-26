@@ -811,3 +811,62 @@ Home → tap livestock card → ListingDetailScreen → Unlock Contact (KES 100)
 
 Order rationale: chat is how the deal happens; tracking is what
 happens after. Deal > logistics. Docs wait until vets use the platform.
+
+---
+
+## Google OAuth — Deferred to 6.20g (2026-09-26)
+
+**Status:** Not yet implemented. Phone-based login is live and working
+(commit d5c1703). Google OAuth was scoped but deferred because it
+requires setup outside the codebase before any code is useful.
+
+### What's needed before we can build 6.20g
+
+1. **Google Cloud Console setup** (~10 min on a phone browser):
+   - Open https://console.cloud.google.com
+   - Create a new project (free, no credit card)
+   - Enable "Google Identity Services" API
+   - Create OAuth 2.0 Client ID (Web application)
+   - Add authorized redirect URIs:
+     - http://localhost:5173 (dev)
+     - https://yourproductionurl.com (later)
+   - Copy **Client ID** and **Client Secret**
+
+2. **Add to backend/.env**:
+   GOOGLE_CLIENT_ID=<from console>
+   GOOGLE_CLIENT_SECRET=<from console>
+
+3. **Install npm dependency**:
+   cd backend && npm install google-auth-library
+
+### What 6.20g will build (~150 lines)
+
+**Backend** (backend/src/routes/auth.js + new google.js service):
+- POST /api/auth/google — receives ID token
+- Verify token via google-auth-library
+- Extract email + sub (Google user ID)
+- If email exists → restore session
+- If new → return needPhone:true → frontend prompts for phone
+  (required for SMS-based features like donkey slaughter consent)
+- Store googleId + email on the user record
+
+**Frontend** (AuthSheet.jsx):
+- Add "Continue with Google" button above the phone input
+- Load Google Identity Services JS SDK
+- On click: Google popup → user consents → receive idToken → send to backend
+- Handle needPhone response → prompt for phone → link account
+
+### Design decisions locked
+
+- Free forever. Google Sign-In has no per-user cost. Google Cloud project is free.
+- Dual path. Google AND phone — Google for urban users, phone for farmers.
+- Phone still required for SMS features (donkey slaughter consent, offer notifications).
+- No account merge conflicts. One email = one user; one phone = one user; if both exist, link them.
+
+### Kenya-specific rationale
+
+Google account penetration in rural Kenya is low. Most farmers have a phone number but not a Gmail account. So:
+- Phone is the primary identity for farmers
+- Google is a convenience layer for urban buyers (hotels, restaurants)
+
+Both routes must work. Neither replaces the other.
