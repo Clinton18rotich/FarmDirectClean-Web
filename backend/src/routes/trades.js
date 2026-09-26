@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const deliveryLegs = require('../services/deliveryLegs');
 
 // Strip buyer-only fields (releaseCode) unless requester is the buyer.
 // Same privacy pattern as 6.18 (meat traceability masking).
@@ -214,6 +215,92 @@ router.get('/user/:userId', (req, res) => {
 router.get('/rider/:riderId', (req, res) => {
   const list = trades.listTradesByRider(req.params.riderId);
   res.json({ success: true, trades: list, total: list.length });
+});
+
+/**
+ * Session 4B — Multi-leg shipment tracking.
+ * Legs = hops of the delivery (farm → office → bus → stage → buyer).
+ * Anyone on the trade can add; the last-in-progress leg is the active one.
+ */
+
+/**
+ * GET /api/trades/:id/legs — get full leg chain + config for UI.
+ */
+router.get('/:id/legs', (req, res) => {
+  try {
+    const trades = require('../services/trades');
+    const trade = trades.getTrade(req.params.id);
+    if (!trade) return res.status(404).json({ success: false, message: 'Trade not found' });
+    const result = deliveryLegs.getLegs(trade);
+    res.json({
+      success: true,
+      legs: result.legs,
+      currentLegIndex: result.currentLegIndex,
+      overallStatus: result.overallStatus,
+      config: deliveryLegs.getConfig(),
+    });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+/**
+ * POST /api/trades/:id/legs — add a new leg to the chain.
+ * Body: { from: {county,ward,area,label}, to: {...}, method, carrier?, trackingCode?, notes? }
+ *      byRole: 'seller' | 'buyer' | 'rider'
+ */
+router.post('/:id/legs', (req, res) => {
+  try {
+    const trades = require('../services/trades');
+    const trade = trades.getTrade(req.params.id);
+    if (!trade) return res.status(404).json({ success: false, message: 'Trade not found' });
+    const { from, to, method, carrier, trackingCode, notes, byRole } = req.body || {};
+    const result = deliveryLegs.addLeg(trade, { from, to, method, carrier, trackingCode, notes }, byRole || 'seller');
+    if (result.error) return res.status(400).json({ success: false, message: result.error });
+    trades._persist();
+    res.json({ success: true, leg: result.leg, legs: result.legs, currentLegIndex: result.currentLegIndex });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+/**
+ * PATCH /api/trades/:id/legs/:legId — update status.
+ * Body: { status: 'in_transit' | 'arrived' | 'failed', notes?, byRole? }
+ */
+router.patch('/:id/legs/:legId', (req, res) => {
+  try {
+    const trades = require('../services/trades');
+    const trade = trades.getTrade(req.params.id);
+    if (!trade) return res.status(404).json({ success: false, message: 'Trade not found' });
+    const { status, notes, byRole } = req.body || {};
+    if (!status) return res.status(400).json({ success: false, message: 'status required' });
+    const result = deliveryLegs.updateLegStatus(trade, req.params.legId, { status, notes, byRole });
+    if (result.error) return res.status(400).json({ success: false, message: result.error });
+    trades._persist();
+    res.json({ success: true, leg: result.leg, legs: result.legs, currentLegIndex: result.currentLegIndex });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+/**
+ * DELETE /api/trades/:id/legs/:legId — remove a pending leg.
+ * Body: { byRole }
+ */
+router.delete('/:id/legs/:legId', (req, res) => {
+  try {
+    const trades = require('../services/trades');
+    const trade = trades.getTrade(req.params.id);
+    if (!trade) return res.status(404).json({ success: false, message: 'Trade not found' });
+    const byRole = (req.body && req.body.byRole) || req.query.byRole || null;
+    const result = deliveryLegs.removeLeg(trade, req.params.legId, byRole);
+    if (result.error) return res.status(400).json({ success: false, message: result.error });
+    trades._persist();
+    res.json({ success: true, legs: result.legs, currentLegIndex: result.currentLegIndex });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
 });
 
 module.exports = router;

@@ -761,7 +761,14 @@ async function fileDispute(tradeId, { filedBy, reason, claims, requestedResoluti
 // ═══════════════════════════════════════════════════════════
 
 function getTrade(id) {
-  return trades.get(id);
+  const trade = trades.get(id);
+  if (!trade) return null;
+  // Session 4B: lazy-migrate single-hop deliveries to a legs[] chain
+  try {
+    const legs = require('./deliveryLegs');
+    legs.ensureLegs(trade);
+  } catch (e) { /* silent */ }
+  return trade;
 }
 
 function listTradesByUser(userId, filter = {}) {
@@ -858,6 +865,9 @@ module.exports = {
   listTradesByRider,
   getStats,
   listAwaitingPayment,
+  // Session 4B: multi-leg shipment tracking
+  deliveryLegs: require('./deliveryLegs'),
+
   // Testing
   _trades: trades,
   _persist: persist,
