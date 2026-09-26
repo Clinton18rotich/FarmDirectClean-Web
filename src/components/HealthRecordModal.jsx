@@ -250,6 +250,26 @@ export default function HealthRecordModal({ animal, currentFarmer, currentVet, o
               ➕ Add Health Event
             </button>
 
+            <button
+              onClick={async () => {
+                if (!animal?.passportId) return;
+                setCertLoading(true);
+                try {
+                  const res = await api.shamba.getHealthCertificate(animal.passportId);
+                  if (!res.success || !res.html) throw new Error(res.message || 'Failed');
+                  setCertModal({ open: true, title: 'Health Certificate', html: res.html, reference: res.reference || '' });
+                } catch (err) {
+                  alert('Could not load certificate: ' + err.message);
+                } finally {
+                  setCertLoading(false);
+                }
+              }}
+              disabled={certLoading}
+              style={{ ...primaryBtn, background: 'white', color: '#2E7D32', border: '1px solid #2E7D32' }}
+            >
+              {certLoading ? '⏳ Loading…' : '📄 Health Certificate'}
+            </button>
+
             {loading && (
               <div style={{ textAlign:'center', padding:30 }}>
                 <div style={{ fontSize:24 }}>⏳</div>

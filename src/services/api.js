@@ -103,6 +103,7 @@ api.shamba = {
   healthEventTypes: () => request('/api/shamba/health-event-types'),
   recordHealthEvent: (passportId, data) => request(`/api/shamba/livestock/${passportId}/health-event`, { method: 'POST', body: data }),
   getHealthEventDocument: (passportId, eventId) => request(`/api/shamba/livestock/${passportId}/health-event/${eventId}/document`),
+  getHealthCertificate: (passportId) => request(`/api/shamba/livestock/${passportId}/health-certificate`),
   listHealthEvents: (passportId, filter = {}) => {
     const params = new URLSearchParams(filter).toString();
     return request(`/api/shamba/livestock/${passportId}/health-events${params ? '?' + params : ''}`);
@@ -405,6 +406,7 @@ api.trades = {
   riderTrades: (riderId) => request(`/api/trades/rider/${riderId}`),
   // Session 4B — multi-leg shipment tracking
   getLegs: (id) => request(`/api/trades/${id}/legs`),
+  getMovementPermit: (id) => request(`/api/trades/${id}/movement-permit`),
   addLeg: (id, data) => request(`/api/trades/${id}/legs`, { method: 'POST', body: data }),
   updateLeg: (id, legId, data) => request(`/api/trades/${id}/legs/${legId}`, { method: 'PATCH', body: data }),
   removeLeg: (id, legId, byRole) => request(`/api/trades/${id}/legs/${legId}`, { method: 'DELETE', body: { byRole } }),

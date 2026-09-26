@@ -164,13 +164,233 @@ function renderVaccinationCert({ event, animal, owner, vet }) {
   };
 }
 
-// ─── Stubs for future docs (6.14-b+) ────────────────────────
-function renderMovementPermit(/* { trade, animal, owner, buyer } */) {
-  return { error: 'Not implemented yet — coming in 6.14-b' };
+// ─── Movement permit (trade-scoped, cross-county livestock) ─
+function renderMovementPermit({ trade, animal, seller, buyer, vet }) {
+  if (!trade) return { error: 'No trade provided' };
+  if (!animal) return { error: 'Animal not found for this trade' };
+
+  const permitRef = 'FD-MP-' + String(trade.id || '').replace(/^TRADE-/, '').slice(0, 10).toUpperCase();
+  const issuedAt = new Date();
+  const validFrom = issuedAt;
+  const validTo = new Date(issuedAt.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+  const pickup = trade.delivery?.pickup || {};
+  const dropoff = trade.delivery?.dropoff || {};
+  const fromCounty = pickup.county || animal.location?.county || seller?.location?.county || '—';
+  const fromWard   = pickup.ward || seller?.location?.ward || '—';
+  const toCounty   = dropoff.county || buyer?.location?.county || '—';
+  const toWard     = dropoff.ward || buyer?.location?.ward || '—';
+
+  // Route: prefer legs, else direct
+  const legs = trade.delivery?.legs || [];
+  let routeCells = '';
+  if (legs.length > 0) {
+    routeCells = legs.map((leg, i) => {
+      const f = leg.from?.label || leg.from?.county || '?';
+      const t = leg.to?.label || leg.to?.county || '?';
+      const m = leg.method ? `<div style="font-size:11px;color:#666">${esc(leg.method)}${leg.carrier ? ' · ' + esc(leg.carrier) : ''}</div>` : '';
+      return `<tr><td style="padding:6px 8px;border:1px solid #ddd;text-align:center;font-size:12px">${i + 1}</td><td style="padding:6px 8px;border:1px solid #ddd;font-size:12px">${esc(f)} → ${esc(t)}${m}</td></tr>`;
+    }).join('');
+  } else {
+    routeCells = `<tr><td style="padding:6px 8px;border:1px solid #ddd;text-align:center;font-size:12px">1</td><td style="padding:6px 8px;border:1px solid #ddd;font-size:12px">${esc(fromCounty)} → ${esc(toCounty)} (direct)</td></tr>`;
+  }
+
+  return {
+    html: `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(permitRef)} — FarmDirect</title>
+<style>${STYLES}</style>
+</head>
+<body>
+<div class="doc">
+  <div class="header">
+    <div class="brand">FarmDirect</div>
+    <div class="brand-sub">Digital Livestock Registry · Sajili ya Mifugo</div>
+    <div class="doc-title-en">Livestock Movement Permit</div>
+    <div class="doc-title-sw">Kibali cha Usafirishaji wa Mifugo</div>
+    <div class="ref">Permit No: ${esc(permitRef)} · Issued ${esc(fmtDate(issuedAt))}</div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Animal · Mnyama</div>
+    <div class="grid">
+      <div class="field"><div class="field-label">Passport No.</div><div class="field-value" style="font-family:monospace">${esc(animal.passportId)}</div></div>
+      <div class="field"><div class="field-label">Type / Breed</div><div class="field-value">${esc(animal.type || '—')}${animal.breed ? ' · ' + esc(animal.breed) : ''}</div></div>
+      <div class="field"><div class="field-label">Sex</div><div class="field-value">${esc(animal.gender || '—')}</div></div>
+      <div class="field"><div class="field-label">Colour</div><div class="field-value">${esc(animal.color || '—')}</div></div>
+      <div class="field"><div class="field-label">Owner of record · Mmiliki</div><div class="field-value">${esc(animal.ownerName || seller?.name || '—')}</div></div>
+      <div class="field"><div class="field-label">Owner phone</div><div class="field-value">${esc(animal.ownerPhone || seller?.phone || '—')}</div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Movement · Safari</div>
+    <div class="grid">
+      <div class="field"><div class="field-label">From · Kutoka</div><div class="field-value">${esc(fromWard)}, ${esc(fromCounty)}</div></div>
+      <div class="field"><div class="field-label">To · Kwenda</div><div class="field-value">${esc(toWard)}, ${esc(toCounty)}</div></div>
+      <div class="field"><div class="field-label">Consignor · Mzigo</div><div class="field-value">${esc(seller?.name || trade.sellerName || '—')}</div></div>
+      <div class="field"><div class="field-label">Consignee · Mpokeaji</div><div class="field-value">${esc(buyer?.name || trade.buyerName || '—')}</div></div>
+      <div class="field"><div class="field-label">Purpose · Kusudi</div><div class="field-value">Sale / purchase — trade ${esc((trade.id || '').slice(-10))}</div></div>
+      <div class="field"><div class="field-label">Valid</div><div class="field-value">${esc(fmtDate(validFrom))} → ${esc(fmtDate(validTo))}</div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Transit route · Njia</div>
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr>
+        <th style="padding:6px 8px;border:1px solid #ddd;background:#E8F5E9;font-size:11px;text-align:left">Leg</th>
+        <th style="padding:6px 8px;border:1px solid #ddd;background:#E8F5E9;font-size:11px;text-align:left">Segment</th>
+      </tr></thead>
+      <tbody>${routeCells}</tbody>
+    </table>
+  </div>
+
+  <div class="sig-block">
+    <div>
+      <div style="height:50px"></div>
+      <div class="sig-line">Consignor signature<br><em>Sahihi ya mzigo</em></div>
+    </div>
+    <div>
+      <div style="height:50px"></div>
+      <div class="sig-line">Certifying officer (DVS/Vet)<br><em>Afisa wa mifugo</em></div>
+    </div>
+  </div>
+
+  <div class="footer">
+    This permit is generated by FarmDirect from the digital livestock registry. Present at checkpoints and county borders.<br>
+    Kibali hiki kimetolewa na FarmDirect kutoka kwa sajili ya kidijitali ya mifugo.<br>
+    <strong>farmdirect.co.ke</strong> · Permit ${esc(permitRef)} · ${esc(fmtDateTime(issuedAt))}
+  </div>
+</div>
+</body>
+</html>`,
+    reference: permitRef,
+    issuedAt: issuedAt.toISOString(),
+  };
 }
 
-function renderHealthCert(/* { animal, vet } */) {
-  return { error: 'Not implemented yet — coming in 6.14-b' };
+// ─── Health certificate (animal-scoped, aggregate) ──────────
+function renderHealthCert({ animal, events, vet }) {
+  if (!animal) return { error: 'No animal provided' };
+
+  const certRef = 'FD-HC-' + String(animal.passportId || '').replace(/^KE-/, '').slice(0, 10).toUpperCase();
+  const issuedAt = new Date();
+
+  // Only vet-verified events count toward the "official" health status
+  const verified = (events || []).filter(e => e.tier === 'vet_verified');
+  const others = (events || []).filter(e => e.tier !== 'vet_verified');
+
+  const verifiedRows = verified.length === 0
+    ? `<tr><td colspan="4" style="padding:10px;text-align:center;color:#999;font-size:12px;border:1px solid #ddd">No vet-verified events on record</td></tr>`
+    : verified.map(e => `<tr>
+        <td style="padding:6px 8px;border:1px solid #ddd;font-size:12px">${esc(fmtDate(e.eventDate))}</td>
+        <td style="padding:6px 8px;border:1px solid #ddd;font-size:12px">${esc(e.eventTypeLabel || e.eventType)}</td>
+        <td style="padding:6px 8px;border:1px solid #ddd;font-size:12px">${esc(e.product || '—')}${e.dosage ? ' · ' + esc(e.dosage) : ''}</td>
+        <td style="padding:6px 8px;border:1px solid #ddd;font-size:12px">${esc(e.verifiedBy?.name || '—')}</td>
+      </tr>`).join('');
+
+  const othersSection = others.length === 0 ? '' : `
+  <div class="section">
+    <div class="section-title">Self-reported / community events (informational)</div>
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr>
+        <th style="padding:6px 8px;border:1px solid #ddd;background:#FFF8E1;font-size:11px;text-align:left">Date</th>
+        <th style="padding:6px 8px;border:1px solid #ddd;background:#FFF8E1;font-size:11px;text-align:left">Type</th>
+        <th style="padding:6px 8px;border:1px solid #ddd;background:#FFF8E1;font-size:11px;text-align:left">Product</th>
+        <th style="padding:6px 8px;border:1px solid #ddd;background:#FFF8E1;font-size:11px;text-align:left">Source</th>
+      </tr></thead>
+      <tbody>
+        ${others.map(e => `<tr>
+          <td style="padding:6px 8px;border:1px solid #ddd;font-size:12px">${esc(fmtDate(e.eventDate))}</td>
+          <td style="padding:6px 8px;border:1px solid #ddd;font-size:12px">${esc(e.eventTypeLabel || e.eventType)}</td>
+          <td style="padding:6px 8px;border:1px solid #ddd;font-size:12px">${esc(e.product || '—')}${e.dosage ? ' · ' + esc(e.dosage) : ''}</td>
+          <td style="padding:6px 8px;border:1px solid #ddd;font-size:12px">${esc(e.performedBy?.name || e.tier || '—')}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
+
+  return {
+    html: `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(certRef)} — FarmDirect</title>
+<style>${STYLES}</style>
+</head>
+<body>
+<div class="doc">
+  <div class="header">
+    <div class="brand">FarmDirect</div>
+    <div class="brand-sub">Digital Livestock Registry · Sajili ya Mifugo</div>
+    <div class="doc-title-en">Animal Health Certificate</div>
+    <div class="doc-title-sw">Cheti cha Afya ya Mnyama</div>
+    <div class="ref">Ref: ${esc(certRef)} · Issued ${esc(fmtDate(issuedAt))}</div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Animal · Mnyama</div>
+    <div class="grid">
+      <div class="field"><div class="field-label">Passport No.</div><div class="field-value" style="font-family:monospace">${esc(animal.passportId)}</div></div>
+      <div class="field"><div class="field-label">Type / Breed</div><div class="field-value">${esc(animal.type || '—')}${animal.breed ? ' · ' + esc(animal.breed) : ''}</div></div>
+      <div class="field"><div class="field-label">Sex</div><div class="field-value">${esc(animal.gender || '—')}</div></div>
+      <div class="field"><div class="field-label">Colour</div><div class="field-value">${esc(animal.color || '—')}</div></div>
+      <div class="field"><div class="field-label">Owner · Mmiliki</div><div class="field-value">${esc(animal.ownerName || '—')}</div></div>
+      <div class="field"><div class="field-label">Location</div><div class="field-value">${esc(animal.location?.county || '—')}</div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Vet-verified health record · Rekodi ya afya</div>
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr>
+        <th style="padding:6px 8px;border:1px solid #ddd;background:#E8F5E9;font-size:11px;text-align:left">Date</th>
+        <th style="padding:6px 8px;border:1px solid #ddd;background:#E8F5E9;font-size:11px;text-align:left">Event</th>
+        <th style="padding:6px 8px;border:1px solid #ddd;background:#E8F5E9;font-size:11px;text-align:left">Product / Dosage</th>
+        <th style="padding:6px 8px;border:1px solid #ddd;background:#E8F5E9;font-size:11px;text-align:left">Verified by</th>
+      </tr></thead>
+      <tbody>${verifiedRows}</tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Status · Hali</div>
+    <div class="field" style="font-size:13px">
+      ${verified.length > 0
+        ? `As of ${esc(fmtDate(issuedAt))}, this animal has <strong>${verified.length}</strong> vet-verified health event${verified.length === 1 ? '' : 's'} on file and no recorded notifiable disease at last inspection.`
+        : `No vet-verified health events are on record for this animal. An inspection is required before a negative-disease statement can be issued.`}
+    </div>
+  </div>
+
+  ${othersSection}
+
+  <div class="sig-block">
+    <div>
+      <div style="height:50px"></div>
+      <div class="sig-line">Attending veterinarian<br><em>Daktari wa mifugo</em></div>
+    </div>
+    <div>
+      <div style="height:50px"></div>
+      <div class="sig-line">KVB license / stamp<br><em>Leseni / muhuri</em></div>
+    </div>
+  </div>
+
+  <div class="footer">
+    This certificate is generated by FarmDirect from the digital livestock registry. It is not a substitute for an in-person veterinary inspection.<br>
+    Cheti hiki kimetolewa na FarmDirect. Si mbadala wa ukaguzi wa ana kwa ana na daktari wa mifugo.<br>
+    <strong>farmdirect.co.ke</strong> · Ref ${esc(certRef)} · ${esc(fmtDateTime(issuedAt))}
+  </div>
+</div>
+</body>
+</html>`,
+    reference: certRef,
+    issuedAt: issuedAt.toISOString(),
+  };
 }
 
 module.exports = {

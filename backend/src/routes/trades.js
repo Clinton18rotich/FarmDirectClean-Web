@@ -226,6 +226,56 @@ router.get('/rider/:riderId', (req, res) => {
 /**
  * GET /api/trades/:id/legs — get full leg chain + config for UI.
  */
+// Session 6.14-b: printable livestock movement permit
+router.get('/:id/movement-permit', (req, res) => {
+  try {
+    const tradesSvc = require('../services/trades');
+    const shamba = require('../services/shamba');
+    const market = require('../services/market');
+    const docTemplates = require('../services/docTemplates');
+
+    const trade = tradesSvc.getTrade(req.params.id);
+    if (!trade) return res.status(404).json({ success: false, message: 'Trade not found' });
+
+    // Resolve passport via subject.referenceId → listing.passportId → give up
+    let passportId = trade.subject?.referenceId || null;
+    if (!passportId && trade.listingId && market.getListing) {
+      try {
+        const listing = market.getListing(trade.listingId);
+        passportId = listing?.passportId || null;
+      } catch { /* ignore */ }
+    }
+    if (!passportId) {
+      return res.status(400).json({ success: false, message: 'Trade has no linked livestock passport' });
+    }
+
+    // Prefer the frozen snapshot from the trade (as-it-was-at-trade) for legal accuracy
+    let animal = trade.subject?.snapshot || null;
+    if (!animal) {
+      try { animal = shamba.getLivestock(passportId); } catch { /* ignore */ }
+    }
+    if (!animal) return res.status(404).json({ success: false, message: 'Animal not found' });
+
+    // Ensure passportId is set (snapshot might use different key)
+    if (!animal.passportId) animal.passportId = passportId;
+
+    const seller = { name: trade.sellerName, phone: trade.sellerPhone };
+    const buyer  = { name: trade.buyerName,  phone: trade.buyerPhone  };
+
+    const doc = docTemplates.renderMovementPermit({ trade, animal, seller, buyer });
+    if (doc.error) return res.status(400).json({ success: false, message: doc.error });
+
+    res.json({
+      success: true,
+      reference: doc.reference,
+      issuedAt: doc.issuedAt,
+      html: doc.html,
+    });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
 router.get('/:id/legs', (req, res) => {
   try {
     const trades = require('../services/trades');

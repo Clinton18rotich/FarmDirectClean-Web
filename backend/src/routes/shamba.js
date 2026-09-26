@@ -251,6 +251,33 @@ router.get('/livestock/:passportId/health-events', (req, res) => {
   }
 });
 
+// Session 6.14-b: aggregate health certificate for an animal
+router.get('/livestock/:passportId/health-certificate', (req, res) => {
+  try {
+    const shamba = require('../services/shamba');
+    const healthEvents = require('../services/healthEvents');
+    const docTemplates = require('../services/docTemplates');
+
+    const animal = shamba.getLivestock(req.params.passportId);
+    if (!animal) return res.status(404).json({ success: false, message: 'Animal not found' });
+
+    const result = healthEvents.listHealthEvents(req.params.passportId, {}) || {};
+    const events = result.events || result || [];
+
+    const doc = docTemplates.renderHealthCert({ animal, events });
+    if (doc.error) return res.status(400).json({ success: false, message: doc.error });
+
+    res.json({
+      success: true,
+      reference: doc.reference,
+      issuedAt: doc.issuedAt,
+      html: doc.html,
+    });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
 // Session 6.14-a: printable certificate (HTML) for a health event
 router.get('/livestock/:passportId/health-event/:eventId/document', (req, res) => {
   try {
