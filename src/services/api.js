@@ -1,12 +1,37 @@
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001';
 
 async function request(path, options = {}) {
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  });
-  return await res.json();
+  let res;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      headers: { 'Content-Type': 'application/json' },
+      ...options,
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    });
+  } catch (err) {
+    // Network failure — server down, phone offline, DNS, CORS, etc.
+    throw new Error(`Network error: ${err.message || 'request failed'}`);
+  }
+
+  // Always try to parse JSON — the backend returns JSON for every status,
+  // including errors, so we can surface the real message to the caller.
+  let body;
+  try {
+    body = await res.json();
+  } catch (err) {
+    // Non-JSON response (usually a 502/504 HTML page from a proxy).
+    throw new Error(`HTTP ${res.status} — invalid JSON response`);
+  }
+
+  // Non-2xx → throw with the backend's message if present.
+  // 2xx → return body as-is; caller still owns `success: false` handling
+  // (some endpoints use that as a normal branch, e.g. auth lookup misses).
+  if (!res.ok) {
+    const msg = (body && (body.message || body.error)) || `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+
+  return body;
 }
 
 export const api = {
