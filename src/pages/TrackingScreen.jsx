@@ -9,17 +9,12 @@ const TERMINAL_STATUSES = ['completed', 'cancelled', 'failed'];
 function isActive(trade) {
   return !TERMINAL_STATUSES.includes((trade.status || '').toLowerCase());
 }
-
 function shortId(id) {
   if (!id) return '—';
   const s = String(id);
   return s.length > 16 ? s.slice(0, 14) + '…' : s;
 }
-
-function legsOf(trade) {
-  return (trade?.delivery?.legs) || [];
-}
-
+function legsOf(trade) { return (trade?.delivery?.legs) || []; }
 function currentLegIndex(trade) {
   const idx = trade?.delivery?.currentLegIndex;
   if (typeof idx === 'number' && idx >= 0) return idx;
@@ -28,7 +23,6 @@ function currentLegIndex(trade) {
   const firstPending = legs.findIndex(l => l.status !== 'arrived');
   return firstPending === -1 ? legs.length - 1 : firstPending;
 }
-
 function legLabelFrom(leg) {
   return (leg?.from?.label || leg?.from?.area || leg?.from?.ward || leg?.from?.county || '?').toString();
 }
@@ -39,49 +33,38 @@ function legShort(text) {
   if (!text) return '?';
   return String(text).slice(0, 3).toUpperCase();
 }
-
 function routeSummary(trade) {
   const legs = legsOf(trade);
-  if (legs.length > 0) {
-    return `${legLabelFrom(legs[0])} → ${legLabelTo(legs[legs.length - 1])}`;
-  }
-  // Fallback for trades without legs
+  if (legs.length > 0) return `${legLabelFrom(legs[0])} → ${legLabelTo(legs[legs.length - 1])}`;
   const from = trade?.delivery?.pickup?.area || trade?.delivery?.pickup?.county || '?';
   const to = trade?.delivery?.dropoff?.area || trade?.delivery?.dropoff?.county || '?';
   return `${from} → ${to}`;
 }
-
 function counterparty(trade, currentUser) {
   if (!currentUser) return { name: 'Unknown', role: '' };
   const myId = currentUser.id;
   const isSeller = trade.sellerId === myId;
   const isBuyer = trade.buyerId === myId;
-  if (isSeller && !isBuyer) {
-    return { name: trade.buyerName || trade.buyerPhone || 'Buyer', role: 'Buyer' };
-  }
-  if (isBuyer && !isSeller) {
-    return { name: trade.sellerName || trade.sellerPhone || 'Seller', role: 'Seller' };
-  }
-  // Both roles (self-trade edge case) — show seller side
+  if (isSeller && !isBuyer) return { name: trade.buyerName || trade.buyerPhone || 'Buyer', role: 'Buyer' };
+  if (isBuyer && !isSeller) return { name: trade.sellerName || trade.sellerPhone || 'Seller', role: 'Seller' };
   return { name: trade.sellerName || 'Seller', role: 'Seller' };
 }
-
 function statusBadge(status) {
   const s = (status || 'pending').toLowerCase();
   const map = {
-    escrow_pending:    { bg: '#FFF3E0', fg: '#E65100', label: 'Escrow pending' },
-    awaiting_funding:  { bg: '#FFF3E0', fg: '#E65100', label: 'Awaiting funding' },
-    matching_rider:    { bg: '#E3F2FD', fg: '#1565C0', label: 'Matching rider' },
-    rider_assigned:    { bg: '#E3F2FD', fg: '#1565C0', label: 'Rider assigned' },
-    awaiting_release:  { bg: '#F3E5F5', fg: '#6A1B9A', label: 'Delivered' },
-    releasing:         { bg: '#E8F5E9', fg: '#2E7D32', label: 'Releasing' },
-    completed:         { bg: '#E8F5E9', fg: '#2E7D32', label: 'Completed' },
-    disputed:          { bg: '#FFEBEE', fg: '#C62828', label: 'Disputed' },
-    failed:            { bg: '#FFEBEE', fg: '#C62828', label: 'Failed' },
-    no_rider_available:{ bg: '#FFEBEE', fg: '#C62828', label: 'No rider' },
-    cancelled:         { bg: '#F5F5F5', fg: '#616161', label: 'Cancelled' },
+    escrow_pending:    { bg:'#FFF3E0', fg:'#E65100', label:'Escrow pending' },
+    awaiting_funding:  { bg:'#FFF3E0', fg:'#E65100', label:'Awaiting funding' },
+    matching_rider:    { bg:'#E3F2FD', fg:'#1565C0', label:'Matching rider' },
+    rider_assigned:    { bg:'#E3F2FD', fg:'#1565C0', label:'Rider assigned' },
+    awaiting_release:  { bg:'#F3E5F5', fg:'#6A1B9A', label:'Delivered' },
+    releasing:         { bg:'#E8F5E9', fg:'#2E7D32', label:'Releasing' },
+    completed:         { bg:'#E8F5E9', fg:'#2E7D32', label:'Completed' },
+    disputed:          { bg:'#FFEBEE', fg:'#C62828', label:'Disputed' },
+    failed:            { bg:'#FFEBEE', fg:'#C62828', label:'Failed' },
+    no_rider_available:{ bg:'#FFEBEE', fg:'#C62828', label:'No rider' },
+    cancelled:         { bg:'#F5F5F5', fg:'#616161', label:'Cancelled' },
   };
-  return map[s] || { bg: '#F5F5F5', fg: '#616161', label: status || 'Unknown' };
+  return map[s] || { bg:'#F5F5F5', fg:'#616161', label: status || 'Unknown' };
 }
 
 export default function TrackingScreen({ currentUser, onSelectTrade }) {
@@ -92,13 +75,9 @@ export default function TrackingScreen({ currentUser, onSelectTrade }) {
 
   const load = useCallback(async () => {
     if (!currentUser?.id) {
-      setTrades([]);
-      setError(null);
-      setLoading(false);
-      return;
+      setTrades([]); setError(null); setLoading(false); return;
     }
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
     try {
       const role = currentUser.role === 'farmer' || currentUser.role === 'seller'
         ? 'seller'
@@ -114,8 +93,6 @@ export default function TrackingScreen({ currentUser, onSelectTrade }) {
   }, [currentUser?.id, currentUser?.role]);
 
   useEffect(() => { load(); }, [load]);
-
-  // Poll every 15s while the tab is open
   useEffect(() => {
     if (!currentUser?.id) return;
     const t = setInterval(load, 15000);
@@ -130,12 +107,8 @@ export default function TrackingScreen({ currentUser, onSelectTrade }) {
   });
 
   const handleSelect = (tradeId) => {
-    if (onSelectTrade) {
-      onSelectTrade(tradeId);
-    } else {
-      // Fallback: dispatch event that App.jsx can listen to
-      window.dispatchEvent(new CustomEvent('fd:openTradeTracking', { detail: { tradeId } }));
-    }
+    if (onSelectTrade) onSelectTrade(tradeId);
+    else window.dispatchEvent(new CustomEvent('fd:openTradeTracking', { detail: { tradeId } }));
   };
 
   if (!currentUser?.id) {
@@ -154,44 +127,30 @@ export default function TrackingScreen({ currentUser, onSelectTrade }) {
 
   return (
     <div style={{ paddingBottom: 80 }}>
-      {/* Header */}
       <div style={{ background:'#2E7D32', padding:16, color:'white' }}>
         <h3 style={{ margin:0, fontSize:18 }}>📍 Shipments</h3>
-        <p style={{ fontSize:11, opacity:0.9, margin:'4px 0 0' }}>
-          Track your delivery legs in real-time
-        </p>
+        <p style={{ fontSize:11, opacity:0.9, margin:'4px 0 0' }}>Track your delivery legs in real-time</p>
       </div>
 
-      {/* Filter chips */}
       <div style={{ display:'flex', gap:8, padding:'12px 12px 4px' }}>
         {[
-          { key:'active',    label:'Active' },
+          { key:'active', label:'Active' },
           { key:'completed', label:'Completed' },
-          { key:'all',       label:'All' },
+          { key:'all', label:'All' },
         ].map(f => {
           const on = filter === f.key;
           return (
-            <button
-              key={f.key}
-              onClick={() => setFilter(f.key)}
-              style={{
-                padding:'6px 14px',
-                borderRadius:20,
-                border: on ? '1px solid #2E7D32' : '1px solid #ddd',
-                background: on ? '#E8F5E9' : 'white',
-                color: on ? '#2E7D32' : '#555',
-                fontSize:13,
-                fontWeight: on ? 'bold' : 'normal',
-                cursor:'pointer',
-              }}
-            >
-              {f.label}
-            </button>
+            <button key={f.key} onClick={() => setFilter(f.key)} style={{
+              padding:'6px 14px', borderRadius:20,
+              border: on ? '1px solid #2E7D32' : '1px solid #ddd',
+              background: on ? '#E8F5E9' : 'white',
+              color: on ? '#2E7D32' : '#555',
+              fontSize:13, fontWeight: on ? 'bold' : 'normal', cursor:'pointer',
+            }}>{f.label}</button>
           );
         })}
       </div>
 
-      {/* Body */}
       <div style={{ padding:12 }}>
         {loading && (
           <div style={{ textAlign:'center', padding:40, color:'#666' }}>
@@ -204,16 +163,7 @@ export default function TrackingScreen({ currentUser, onSelectTrade }) {
           <div style={{ textAlign:'center', padding:40 }}>
             <span style={{ fontSize:40 }}>⚠️</span>
             <p style={{ color:'#C62828' }}>{error}</p>
-            <button
-              onClick={load}
-              style={{
-                marginTop:8, padding:'8px 20px', borderRadius:20,
-                background:'#2E7D32', color:'white', border:'none',
-                fontWeight:'bold', cursor:'pointer',
-              }}
-            >
-              Retry
-            </button>
+            <button onClick={load} style={{ marginTop:8, padding:'8px 20px', borderRadius:20, background:'#2E7D32', color:'white', border:'none', fontWeight:'bold', cursor:'pointer' }}>Retry</button>
           </div>
         )}
 
@@ -221,13 +171,9 @@ export default function TrackingScreen({ currentUser, onSelectTrade }) {
           <div style={{ textAlign:'center', padding:40 }}>
             <span style={{ fontSize:60 }}>📦</span>
             <p style={{ color:'#666' }}>
-              {filter === 'active' ? 'No active shipments' :
-               filter === 'completed' ? 'No completed shipments' :
-               'No shipments yet'}
+              {filter === 'active' ? 'No active shipments' : filter === 'completed' ? 'No completed shipments' : 'No shipments yet'}
             </p>
-            <p style={{ fontSize:12, color:'#999' }}>
-              Trades from the marketplace will appear here
-            </p>
+            <p style={{ fontSize:12, color:'#999' }}>Trades from the marketplace will appear here</p>
           </div>
         )}
 
@@ -240,44 +186,24 @@ export default function TrackingScreen({ currentUser, onSelectTrade }) {
           const allArrived = legs.length > 0 && legs.every(l => l.status === 'arrived');
 
           return (
-            <div
-              key={t.id}
-              onClick={() => handleSelect(t.id)}
-              style={{
-                background:'white', borderRadius:12, padding:14,
-                marginBottom:10, cursor:'pointer',
-                boxShadow:'0 1px 3px rgba(0,0,0,0.06)',
-                border: isActive(t) ? '1px solid #C8E6C9' : '1px solid #E0E0E0',
-              }}
-            >
-              {/* Row 1: ID + status badge */}
+            <div key={t.id} onClick={() => handleSelect(t.id)} style={{
+              background:'white', borderRadius:12, padding:14, marginBottom:10, cursor:'pointer',
+              boxShadow:'0 1px 3px rgba(0,0,0,0.06)',
+              border: isActive(t) ? '1px solid #C8E6C9' : '1px solid #E0E0E0',
+            }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                 <strong style={{ fontSize:13, fontFamily:'monospace' }}>📦 {shortId(t.id)}</strong>
-                <span style={{
-                  background: badge.bg, color: badge.fg,
-                  padding:'3px 10px', borderRadius:10,
-                  fontSize:10, fontWeight:'bold',
-                }}>
+                <span style={{ background:badge.bg, color:badge.fg, padding:'3px 10px', borderRadius:10, fontSize:10, fontWeight:'bold' }}>
                   {badge.label}
                 </span>
               </div>
-
-              {/* Row 2: counterparty */}
               <div style={{ fontSize:12, color:'#555', marginTop:6 }}>
                 {cp.role}: <strong>{cp.name}</strong>
               </div>
+              <div style={{ fontSize:12, color:'#333', marginTop:4 }}>📍 {routeSummary(t)}</div>
 
-              {/* Row 3: route */}
-              <div style={{ fontSize:12, color:'#333', marginTop:4 }}>
-                📍 {routeSummary(t)}
-              </div>
-
-              {/* Row 4: mini-leg-summary */}
               {legs.length > 0 && (
-                <div style={{
-                  display:'flex', alignItems:'center',
-                  marginTop:10, gap:2, overflowX:'auto',
-                }}>
+                <div style={{ display:'flex', alignItems:'center', marginTop:10, gap:2, overflowX:'auto' }}>
                   {legs.map((leg, i) => {
                     const done = leg.status === 'arrived';
                     const isActiveLeg = i === activeIdx && !done;
@@ -285,44 +211,23 @@ export default function TrackingScreen({ currentUser, onSelectTrade }) {
                     return (
                       <React.Fragment key={leg.id || i}>
                         {i > 0 && (
-                          <div style={{
-                            width:14, height:2,
-                            background: legs[i - 1].status === 'arrived' ? '#2E7D32' : '#ddd',
-                            flexShrink:0,
-                          }} />
+                          <div style={{ width:14, height:2, background: legs[i-1].status === 'arrived' ? '#2E7D32' : '#ddd', flexShrink:0 }} />
                         )}
                         <div style={{ display:'flex', flexDirection:'column', alignItems:'center', flexShrink:0 }}>
-                          <div style={{
-                            width: isActiveLeg ? 12 : 10,
-                            height: isActiveLeg ? 12 : 10,
-                            borderRadius:'50%', background: col,
-                          }} />
-                          <span style={{ fontSize:8, color:'#666', marginTop:2 }}>
-                            {legShort(legLabelFrom(leg))}
-                          </span>
+                          <div style={{ width: isActiveLeg ? 12 : 10, height: isActiveLeg ? 12 : 10, borderRadius:'50%', background: col }} />
+                          <span style={{ fontSize:8, color:'#666', marginTop:2 }}>{legShort(legLabelFrom(leg))}</span>
                         </div>
                       </React.Fragment>
                     );
                   })}
-                  {/* Final destination dot */}
-                  <div style={{
-                    width:14, height:2,
-                    background: allArrived ? '#2E7D32' : '#ddd',
-                    flexShrink:0,
-                  }} />
+                  <div style={{ width:14, height:2, background: allArrived ? '#2E7D32' : '#ddd', flexShrink:0 }} />
                   <div style={{ display:'flex', flexDirection:'column', alignItems:'center', flexShrink:0 }}>
-                    <div style={{
-                      width:10, height:10, borderRadius:'50%',
-                      background: allArrived ? '#2E7D32' : '#BDBDBD',
-                    }} />
-                    <span style={{ fontSize:8, color:'#666', marginTop:2 }}>
-                      {legShort(legLabelTo(legs[legs.length - 1]))}
-                    </span>
+                    <div style={{ width:10, height:10, borderRadius:'50%', background: allArrived ? '#2E7D32' : '#BDBDBD' }} />
+                    <span style={{ fontSize:8, color:'#666', marginTop:2 }}>{legShort(legLabelTo(legs[legs.length - 1]))}</span>
                   </div>
                 </div>
               )}
 
-              {/* Row 5: leg count / current leg hint */}
               {legs.length > 0 && (
                 <div style={{ fontSize:10, color:'#999', marginTop:6 }}>
                   {legs.length} leg{legs.length !== 1 ? 's' : ''}
@@ -332,11 +237,8 @@ export default function TrackingScreen({ currentUser, onSelectTrade }) {
                 </div>
               )}
 
-              {/* Row 6: rider hint */}
               {t.delivery?.riderName && (
-                <div style={{ fontSize:10, color:'#666', marginTop:4 }}>
-                  🏍️ {t.delivery.riderName}
-                </div>
+                <div style={{ fontSize:10, color:'#666', marginTop:4 }}>🏍️ {t.delivery.riderName}</div>
               )}
             </div>
           );

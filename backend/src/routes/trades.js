@@ -231,7 +231,10 @@ router.get('/:id/legs', (req, res) => {
     const trades = require('../services/trades');
     const trade = trades.getTrade(req.params.id);
     if (!trade) return res.status(404).json({ success: false, message: 'Trade not found' });
+    const hadLegs = Array.isArray(trade.delivery?.legs) && trade.delivery.legs.length > 0;
     const result = deliveryLegs.getLegs(trade);
+    // Session 4B-e: persist lazy-migrated legs so the synthetic seed survives restart.
+    if (!hadLegs && result.legs.length > 0) trades._persist();
     res.json({
       success: true,
       legs: result.legs,
