@@ -38,6 +38,14 @@ export default function App() {
   const [myFarmer, setMyFarmer] = useState(null);
   const [myBuyer, setMyBuyer] = useState(null);
   const [chatUnread, setChatUnread] = useState(0);
+
+  // Session 6.20e: unified identity (farmer OR buyer)
+  const currentUser = myFarmer?.farmer
+    ? { id: myFarmer.farmer.phone, fullName: myFarmer.farmer.fullName, phone: myFarmer.farmer.phone, role: 'farmer' }
+    : myBuyer
+      ? { id: myBuyer.phone, fullName: myBuyer.fullName, phone: myBuyer.phone, role: 'buyer' }
+      : null;
+
   const [showAuth, setShowAuth] = useState(false);
   const [authTab, setAuthTab] = useState('signin');
   const [showMarketplace, setShowMarketplace] = useState(false);
@@ -718,7 +726,7 @@ export default function App() {
 
       {showMarketplace && (
         <MarketplaceScreen
-          currentFarmer={myFarmer?.farmer ? { id: myFarmer.farmer.phone, fullName: myFarmer.farmer.fullName, phone: myFarmer.farmer.phone } : null}
+          currentFarmer={currentUser}
           initialListingId={pendingListingId}
           onClose={() => { setShowMarketplace(false); setPendingListingId(null); }}
           onOpenListing={() => {}}
@@ -729,7 +737,7 @@ export default function App() {
       {trackingTradeId && (
         <TradeTrackingScreen
           tradeId={trackingTradeId}
-          currentFarmer={myFarmer?.farmer ? { id: myFarmer.farmer.phone, fullName: myFarmer.farmer.fullName, phone: myFarmer.farmer.phone } : null}
+          currentFarmer={currentUser}
           onClose={() => setTrackingTradeId(null)}
           onOpenReleaseModal={(trade) => setReleaseTrade(trade)}
           onOpenCheckout={(trade) => { setCheckoutTrade(trade); setTrackingTradeId(null); }}
@@ -739,7 +747,7 @@ export default function App() {
       {checkoutTrade && (
         <TradeCheckout
           offer={checkoutTrade}
-          currentFarmer={myFarmer?.farmer ? { id: myFarmer.farmer.phone, fullName: myFarmer.farmer.fullName, phone: myFarmer.farmer.phone } : null}
+          currentFarmer={currentUser}
           onClose={() => setCheckoutTrade(null)}
           onTrack={(id) => { setTrackingTradeId(id); setCheckoutTrade(null); }}
         />
@@ -748,7 +756,7 @@ export default function App() {
       {releaseTrade && (
         <ReleaseCodeModal
           trade={releaseTrade}
-          currentFarmer={myFarmer?.farmer ? { id: myFarmer.farmer.phone, fullName: myFarmer.farmer.fullName, phone: myFarmer.farmer.phone } : null}
+          currentFarmer={currentUser}
           onClose={() => setReleaseTrade(null)}
           onSuccess={() => setReleaseTrade(null)}
         />
