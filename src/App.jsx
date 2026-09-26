@@ -6,6 +6,7 @@ import FarmerRegister from "./components/FarmerRegister";
 import ShambaSafi from "./components/ShambaSafi";
 import ErrorBoundary from "./components/ErrorBoundary";
 import Checkout from "./components/Checkout";
+import AuthSheet from "./components/AuthSheet";
 import MarketplaceScreen from "./components/MarketplaceScreen";
 import TradeCheckout from "./components/TradeCheckout";
 import TradeTrackingScreen from "./components/TradeTrackingScreen";
@@ -34,6 +35,9 @@ export default function App() {
   const [kycTier, setKycTier] = useState(null);
 
   const [myFarmer, setMyFarmer] = useState(null);
+  const [myBuyer, setMyBuyer] = useState(null);
+  const [showAuth, setShowAuth] = useState(false);
+  const [authTab, setAuthTab] = useState('signin');
   const [showMarketplace, setShowMarketplace] = useState(false);
   const [pendingListingId, setPendingListingId] = useState(null);
   const [trackingTradeId, setTrackingTradeId] = useState(null);
@@ -99,6 +103,8 @@ export default function App() {
     try {
       const saved = localStorage.getItem('farmerRegistration');
       if (saved) setMyFarmer(JSON.parse(saved));
+      const savedBuyer = localStorage.getItem('buyerRegistration');
+      if (savedBuyer) setMyBuyer(JSON.parse(savedBuyer));
     } catch (e) {}
     loadRegisteredFarmers();
   }, []);
@@ -225,10 +231,41 @@ export default function App() {
     setTimeout(() => setJustRegistered(false), 8000);
   };
 
+  // Session 6.20: apply server-returned identities to state + localStorage
+  const applyAuthRestore = (res) => {
+    if (res.farmerRegistration) {
+      localStorage.setItem('farmerRegistration', JSON.stringify(res.farmerRegistration));
+      setMyFarmer(res.farmerRegistration);
+      loadRegisteredFarmers();
+    }
+    if (res.buyerRegistration) {
+      localStorage.setItem('buyerRegistration', JSON.stringify(res.buyerRegistration));
+      setMyBuyer(res.buyerRegistration);
+    }
+    if (res.vetId) {
+      localStorage.setItem('vetId', res.vetId);
+    }
+    if (res.riderRegistration) {
+      localStorage.setItem('riderRegistration', JSON.stringify(res.riderRegistration));
+      setRider(res.riderRegistration);
+    }
+  };
+
   const logoutFarmer = () => {
-    if (!confirm('Log out from your farmer account?\n\nNote: This only clears your device. Your products stay live on the marketplace.')) return;
-    localStorage.removeItem('farmerRegistration');
+    const msg = 'Log out from this device?\n\nYour animals, listings, and messages stay on the server. ' +
+                'You can log back in any time by entering the same phone number.';
+    if (!confirm(msg)) return;
+    try {
+      localStorage.removeItem('farmerRegistration');
+      localStorage.removeItem('buyerRegistration');
+      localStorage.removeItem('vetId');
+      localStorage.removeItem('riderRegistration');
+    } catch (e) { /* silent */ }
     setMyFarmer(null);
+    setMyBuyer(null);
+    setRider(null);
+    setTab(0);
+    setShowMarketplace(false);
   };
 
   if (showBusiness) {
@@ -268,6 +305,8 @@ export default function App() {
               <p style={{fontSize:10,margin:0,opacity:.8}}>
                 {myFarmer 
                   ? `👨‍🌾 ${myFarmer.farmer?.fullName || 'Farmer'} • ${displayProducts.length} products live${kycTier ? ' • ' + kycTier.label : ''}`
+                  : myBuyer
+                    ? `🛒 ${myBuyer.fullName || 'Buyer'} • ${myBuyer.buyerType || 'buyer'}`
                   : isDemoMode 
                     ? `${displayProducts.length} demo products • Register to go live`
                     : `${displayProducts.length} products • From ${new Set(registeredProducts.map(p => p.farmer)).size} real farmers`}
@@ -275,14 +314,58 @@ export default function App() {
             </div>
           </div>
           <div style={{display:'flex',gap:6,alignItems:'center'}}>
-            {myFarmer && (
+            {(myFarmer || myBuyer) ? (
               <button onClick={logoutFarmer} title="Logout" style={{
-                background:'rgba(255,255,255,0.2)', border:'none', color:'white',
-                borderRadius:14, padding:'4px 10px', fontSize:11, cursor:'pointer'
+                background:'rgba(255,255,255,0.95)', color:'#2E7D32', border:'none',
+                borderRadius:14, padding:'6px 12px', fontSize:11, fontWeight:'bold', cursor:'pointer',
+                boxShadow:'0 1px 2px rgba(0,0,0,0.1)'
               }}>Logout</button>
+            ) : (
+              <button onClick={() => { setAuthTab('signin'); setShowAuth(true); }} title="Sign In" style={{
+                background:'rgba(255,255,255,0.95)', color:'#2E7D32', border:'none',
+                borderRadius:14, padding:'6px 12px', fontSize:11, fontWeight:'bold', cursor:'pointer',
+                boxShadow:'0 1px 2px rgba(0,0,0,0.1)'
+              }}>🔑 Sign In</button>
             )}
-            <button onClick={() => setShowCart(true)} style={{background:'none',border:'none',color:'white',fontSize:20,cursor:'pointer',position:'relative'}}>
-              🛒{cart.length > 0 && <span style={{position:'absolute',top:-6,right:-6,background:'#FFD600',color:'#000',borderRadius:'50%',width:18,height:18,fontSize:10,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:'bold'}}>{cart.reduce((s,i)=>s+i.qty,0)}</span>}
+            <button
+              onClick={() => setShowCart(true)}
+              style={{
+                background:'rgba(255,255,255,0.95)',
+                border:'none',
+                borderRadius:22,
+                padding:'6px 10px',
+                fontSize:20,
+                lineHeight:1,
+                cursor:'pointer',
+                position:'relative',
+                display:'flex',
+                alignItems:'center',
+                justifyContent:'center',
+                boxShadow:'0 1px 3px rgba(0,0,0,0.15)',
+              }}
+              aria-label="Cart"
+            >
+              🛒
+              {cart.length > 0 && (
+                <span style={{
+                  position:'absolute',
+                  top:-6,
+                  right:-6,
+                  background:'#FFD600',
+                  color:'#000',
+                  borderRadius:'50%',
+                  width:18,
+                  height:18,
+                  fontSize:10,
+                  display:'flex',
+                  alignItems:'center',
+                  justifyContent:'center',
+                  fontWeight:'bold',
+                  border:'2px solid #2E7D32',
+                }}>
+                  {cart.reduce((s,i)=>s+i.qty,0)}
+                </span>
+              )}
             </button>
           </div>
         </header>
@@ -533,7 +616,14 @@ export default function App() {
           </div>
         )}
 
-        {tab === 1 && <ChatScreen />}
+        {tab === 1 && <ChatScreen
+          currentFarmer={myFarmer?.farmer ? { id: myFarmer.farmer.phone, phone: myFarmer.farmer.phone, fullName: myFarmer.farmer.fullName } : null}
+          onOpenListing={(listingId) => {
+            setTab(0);
+            setPendingListingId(listingId);
+            setShowMarketplace(true);
+          }}
+        />}
         {tab === 2 && <EconomyScreen />}
         {tab === 3 && (rider ? <RiderJobPipeline currentRider={rider} onClose={() => setTab(0)} /> : <DeliveryScreen />)}
         {tab === 4 && <TrackingScreen />}
@@ -628,6 +718,16 @@ export default function App() {
       {!selectedFarmer && <button onClick={() => setShowShamba(true)} style={{position:"fixed",bottom:80,right:16,background:"#FF6F00",color:"white",border:"none",width:56,height:56,borderRadius:"50%",fontSize:28,cursor:"pointer",boxShadow:"0 4px 15px rgba(0,0,0,.3)",zIndex:99}}>🛡️</button>}
       {showShamba && <ErrorBoundary><ShambaSafi onClose={() => setShowShamba(false)} onBrowseMarketplace={() => { setShowShamba(false); setShowMarketplace(true); }} /></ErrorBoundary>}
       {showRegister && <FarmerRegister onClose={() => setShowRegister(false)} onRegister={handleFarmerRegistered} />}
+
+      {showAuth && (
+        <AuthSheet
+          initialTab={authTab}
+          onClose={() => setShowAuth(false)}
+          onRestore={applyAuthRestore}
+          onCreateFarmer={(phone) => { setShowAuth(false); setShowRegister(true); }}
+          onCreateBuyer={(phone) => { /* handled inside AuthSheet */ }}
+        />
+      )}
 
       {!selectedFarmer && (
         <nav style={{position:'fixed',bottom:0,width:'100%',maxWidth:450,background:'#4CAF50',display:'flex',justifyContent:'space-around',padding:'8px 0 10px',zIndex:100}}>

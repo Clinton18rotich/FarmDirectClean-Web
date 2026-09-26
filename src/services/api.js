@@ -379,3 +379,22 @@ api.trades = {
   riderTrades: (riderId) => request(`/api/trades/rider/${riderId}`),
   stats: () => request('/api/trades/stats'),
 };
+// Chat (Session 6.11)
+api.chat = {
+  findOrCreateThread: (data) => request('/api/chat/threads', { method: 'POST', body: data }),
+  listThreads: (userId) => request(`/api/chat/threads?userId=${encodeURIComponent(userId)}`),
+  getThread: (threadId, viewerId) => request(`/api/chat/threads/${threadId}${viewerId ? '?viewerId=' + encodeURIComponent(viewerId) : ''}`),
+  sendMessage: (threadId, from, text) => request(`/api/chat/threads/${threadId}/messages`, { method: 'POST', body: { from, text } }),
+  markRead: (threadId, userId) => request(`/api/chat/threads/${threadId}/read`, { method: 'POST', body: { userId } }),
+  archive: (threadId, userId) => request(`/api/chat/threads/${threadId}/archive`, { method: 'POST', body: { userId } }),
+  unreadCount: (userId) => request(`/api/chat/unread?userId=${encodeURIComponent(userId)}`),
+  stats: () => request('/api/chat/stats'),
+};
+
+// Auth (Session 6.20) — simple login by phone
+api.auth = {
+  lookup: (phone) => request('/api/auth/lookup', { method: 'POST', body: { phone } }),
+  restore: (phone) => request('/api/auth/restore', { method: 'POST', body: { phone } }),
+  registerBuyer: (data) => request('/api/auth/register-buyer', { method: 'POST', body: data }),
+  addBuyerAddress: (buyerId, address) => request(`/api/auth/buyer/${buyerId}/address`, { method: 'POST', body: { address } }),
+};

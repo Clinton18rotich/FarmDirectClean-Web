@@ -507,6 +507,20 @@ function getEligibleRiders({ pickup, valueKes, radiusKm = 15, limit = 10 }) {
 // QUERIES
 // ═══════════════════════════════════════════════════════════
 
+function getRiderByPhone(phone) {
+  if (!phone) return null;
+  const target = normalizeKenyaPhone(phone);
+  if (!target) return null;
+  const targetDigits = String(target).replace(/\D/g, '');
+  for (const r of riders.values()) {
+    const rDigits = String(r.phone || '').replace(/\D/g, '');
+    if (!rDigits) continue;
+    // Match by last 9 digits (handles +254 vs 254 vs 0 prefix variance)
+    if (rDigits.slice(-9) === targetDigits.slice(-9)) return r;
+  }
+  return null;
+}
+
 function getRider(id) {
   return riders.get(id);
 }
@@ -550,6 +564,7 @@ function getStats() {
 }
 
 module.exports = {
+  getRiderByPhone,
   registerRider,
   submitKyc,
   approveKyc,
