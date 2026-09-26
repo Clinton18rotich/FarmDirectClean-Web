@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
 import ShipmentTracker from './ShipmentTracker';
+import DocumentPreviewModal from './documents/DocumentPreviewModal';
 
 const card = { background:'white', border:'1px solid #E0E0E0', borderRadius:12, padding:14, marginBottom:12 };
 const row = { display:'flex', justifyContent:'space-between', fontSize:13, padding:'6px 0' };
@@ -28,6 +29,8 @@ export default function TradeTrackingScreen({ tradeId, currentFarmer, onClose, o
   const [error, setError] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
   const [acting, setActing] = useState(false);
+  const [permitModal, setPermitModal] = useState({ open: false, title: '', html: '', reference: '' });
+  const [permitLoading, setPermitLoading] = useState(false);
   const pollRef = useRef(null);
 
   const load = async (silent = false) => {
@@ -49,6 +52,25 @@ export default function TradeTrackingScreen({ tradeId, currentFarmer, onClose, o
     pollRef.current = setInterval(() => load(true), POLL_INTERVAL_MS);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [tradeId]);
+
+  const handleGetPermit = async () => {
+    if (!trade) return;
+    setPermitLoading(true);
+    try {
+      const res = await api.trades.getMovementPermit(trade.id);
+      if (!res.success || !res.html) throw new Error(res.message || 'Failed to render permit');
+      setPermitModal({
+        open: true,
+        title: 'Movement Permit',
+        html: res.html,
+        reference: res.reference || '',
+      });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPermitLoading(false);
+    }
+  };
 
   const handleDispute = async () => {
     const reason = window.prompt('Reason for dispute:');
@@ -149,6 +171,14 @@ export default function TradeTrackingScreen({ tradeId, currentFarmer, onClose, o
           onLegsChanged={() => load(true)}
         />
 
+        <button
+          onClick={handleGetPermit}
+          disabled={permitLoading}
+          style={{ ...primaryBtn, background:'white', color:'#2E7D32', border:'1px solid #2E7D32', marginTop: 4 }}
+        >
+          {permitLoading ? '⏳ Loading permit…' : '📄 Print movement permit'}
+        </button>
+
         {/* Release code — buyer only */}
         {canSeeCode && trade.releaseCode && (
           <div style={{ ...card, background:'#FFF8E1', border:'2px solid #FFD54F' }}>
@@ -232,6 +262,14 @@ export default function TradeTrackingScreen({ tradeId, currentFarmer, onClose, o
         <button onClick={onClose} style={{ ...primaryBtn, background:'#F0F0F0', color:'#666' }}>
           ← Back
         </button>
+
+        <DocumentPreviewModal
+          open={permitModal.open}
+          onClose={() => setPermitModal({ open: false, title: '', html: '', reference: '' })}
+          title={permitModal.title}
+          htmlContent={permitModal.html}
+          reference={permitModal.reference}
+        />
       </div>
     </Shell>
   );

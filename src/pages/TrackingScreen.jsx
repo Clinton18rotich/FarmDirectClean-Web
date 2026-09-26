@@ -106,6 +106,10 @@ export default function TrackingScreen({ currentUser, onSelectTrade }) {
     return true;
   });
 
+  const activeCount = trades.filter(t => isActive(t)).length;
+  const completedCount = trades.filter(t => !isActive(t)).length;
+  const totalCount = trades.length;
+
   const handleSelect = (tradeId) => {
     if (onSelectTrade) onSelectTrade(tradeId);
     else window.dispatchEvent(new CustomEvent('fd:openTradeTracking', { detail: { tradeId } }));
@@ -134,9 +138,9 @@ export default function TrackingScreen({ currentUser, onSelectTrade }) {
 
       <div style={{ display:'flex', gap:8, padding:'12px 12px 4px' }}>
         {[
-          { key:'active', label:'Active' },
-          { key:'completed', label:'Completed' },
-          { key:'all', label:'All' },
+          { key:'active',    label: `Active (${activeCount})` },
+          { key:'completed', label: `Completed (${completedCount})` },
+          { key:'all',       label: `All (${totalCount})` },
         ].map(f => {
           const on = filter === f.key;
           return (
@@ -174,7 +178,20 @@ export default function TrackingScreen({ currentUser, onSelectTrade }) {
               {filter === 'active' ? 'No active shipments' : filter === 'completed' ? 'No completed shipments' : 'No shipments yet'}
             </p>
             <p style={{ fontSize:12, color:'#999' }}>Trades from the marketplace will appear here</p>
-          </div>
+          
+              {filter === 'active' && completedCount > 0 && (
+                <button
+                  onClick={() => setFilter('completed')}
+                  style={{
+                    padding:'10px 20px', borderRadius:20,
+                    border:'1px solid #2E7D32', background:'white', color:'#2E7D32',
+                    fontSize:13, fontWeight:'bold', cursor:'pointer',
+                  }}
+                >
+                  📜 View completed shipments →
+                </button>
+              )}
+</div>
         )}
 
         {!loading && !error && filtered.map(t => {
