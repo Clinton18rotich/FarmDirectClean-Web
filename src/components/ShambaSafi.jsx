@@ -247,13 +247,16 @@ function LandModule({ myFarmer, myLand, reload, onRequestRegister }) {
       <h4 style={{fontSize:16,marginBottom:8}}>🏠 My Land ({myOwnLand.length})</h4>
       <button onClick={() => setView('form')} style={{...primaryBtn, background:'#4CAF50', marginBottom:12}}>+ Register New Parcel</button>
       {!myFarmer && (
-          <div style={{background:'#FFF8E1',padding:12,borderRadius:10,fontSize:12,color:'#E65100',marginBottom:10}}>
-            <div style={{marginBottom:8}}>⚠️ Register as farmer first</div>
+          <div
+            onClick={onRequestRegister}
+            style={{background:'#FFF8E1',padding:12,borderRadius:10,fontSize:12,color:'#E65100',marginBottom:10,cursor:'pointer'}}
+          >
+            <div style={{marginBottom:8}}>⚠️ You need a farmer account to continue</div>
             <button
-              onClick={onRequestRegister}
+              onClick={(e) => { e.stopPropagation(); onRequestRegister(); }}
               style={{padding:'8px 16px',borderRadius:20,border:'none',background:'#E65100',color:'white',fontSize:12,fontWeight:'bold',cursor:'pointer'}}
             >
-              📝 Register as farmer →
+              📝 Create farmer account →
             </button>
           </div>
         )}
@@ -720,13 +723,16 @@ function LivestockModule({ myFarmer, myLivestock, reload, onBrowseMarketplace, o
       </div>
 
       {!myFarmer && (
-          <div style={{background:'#FFF8E1',padding:12,borderRadius:10,fontSize:12,color:'#E65100',marginBottom:10}}>
-            <div style={{marginBottom:8}}>⚠️ Register as farmer first</div>
+          <div
+            onClick={onRequestRegister}
+            style={{background:'#FFF8E1',padding:12,borderRadius:10,fontSize:12,color:'#E65100',marginBottom:10,cursor:'pointer'}}
+          >
+            <div style={{marginBottom:8}}>⚠️ You need a farmer account to continue</div>
             <button
-              onClick={onRequestRegister}
+              onClick={(e) => { e.stopPropagation(); onRequestRegister(); }}
               style={{padding:'8px 16px',borderRadius:20,border:'none',background:'#E65100',color:'white',fontSize:12,fontWeight:'bold',cursor:'pointer'}}
             >
-              📝 Register as farmer →
+              📝 Create farmer account →
             </button>
           </div>
         )}
