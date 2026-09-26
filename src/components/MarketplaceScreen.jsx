@@ -37,7 +37,7 @@ const TABS = [
   { id: 'selling', label: '🏷️ Selling' },
 ];
 
-export default function MarketplaceScreen({ currentFarmer, onClose, onOpenListing, onTrackTrade, initialListingId }) {
+export default function MarketplaceScreen({ currentFarmer, onClose, onOpenListing, onTrackTrade, initialListingId, onRequireAuth }) {
   const [tab, setTab] = useState('browse');
   const [filters, setFilters] = useState({ type: '', county: '', minPrice: '', maxPrice: '', sort: '' });
   const [showFilters, setShowFilters] = useState(false);
@@ -120,6 +120,7 @@ export default function MarketplaceScreen({ currentFarmer, onClose, onOpenListin
         <ListingDetailScreen
           listingId={selectedListingId}
           currentFarmer={currentFarmer}
+          onRequireAuth={onRequireAuth}
           onClose={() => { setSelectedListingId(null); loadListings(); }}
         />
       )}

@@ -728,6 +728,10 @@ export default function App() {
         <MarketplaceScreen
           currentFarmer={currentUser}
           initialListingId={pendingListingId}
+          onRequireAuth={(tab) => {
+            setAuthTab(tab === 'create' ? 'create' : 'signin');
+            setShowAuth(true);
+          }}
           onClose={() => { setShowMarketplace(false); setPendingListingId(null); }}
           onOpenListing={() => {}}
           onTrackTrade={(tradeId) => { setShowMarketplace(false); setPendingListingId(null); setTrackingTradeId(tradeId); }}

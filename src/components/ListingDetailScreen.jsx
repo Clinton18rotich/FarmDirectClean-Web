@@ -6,13 +6,14 @@ import PhotoViewer from './PhotoViewer';
 import UnlockContactModal from './UnlockContactModal';
 import MakeOfferModal from './MakeOfferModal';
 import ThreadView from './ThreadView';
+import RequireIdentityModal from './RequireIdentityModal';
 
 const card = { background:'white', border:'1px solid #E0E0E0', borderRadius:12, padding:14, marginBottom:12 };
 const sectionTitle = { fontSize:12, fontWeight:'bold', color:'#555', margin:'0 0 8px', textTransform:'uppercase', letterSpacing:0.5 };
 const row = { display:'flex', justifyContent:'space-between', fontSize:13, padding:'6px 0', borderBottom:'1px solid #F5F5F5' };
 const primaryBtn = { width:'100%', padding:14, color:'white', border:'none', borderRadius:25, fontSize:15, fontWeight:'bold', cursor:'pointer', marginTop:8, boxSizing:'border-box' };
 
-export default function ListingDetailScreen({ listingId, currentFarmer, onClose, onUnlock, onMakeOffer }) {
+export default function ListingDetailScreen({ listingId, currentFarmer, onClose, onUnlock, onMakeOffer, onRequireAuth }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -22,6 +23,7 @@ export default function ListingDetailScreen({ listingId, currentFarmer, onClose,
   const [showOffer, setShowOffer] = useState(false);
   const [activeThreadId, setActiveThreadId] = useState(null);
   const [creatingThread, setCreatingThread] = useState(false);
+  const [identityPrompt, setIdentityPrompt] = useState(null); // { action, roleHint }
 
   const buyerId = currentFarmer?.id || null;
 
@@ -55,7 +57,7 @@ export default function ListingDetailScreen({ listingId, currentFarmer, onClose,
 
   const handleMessageSeller = async () => {
     if (!currentFarmer?.id) {
-      alert('Please sign in first');
+      setIdentityPrompt({ action: 'message this seller', roleHint: 'buyer' });
       return;
     }
     if (creatingThread) return;
@@ -309,7 +311,13 @@ export default function ListingDetailScreen({ listingId, currentFarmer, onClose,
               </p>
             </div>
             <button
-              onClick={() => setShowUnlock(true)}
+              onClick={() => {
+                if (!currentFarmer?.id) {
+                  setIdentityPrompt({ action: 'unlock this listing', roleHint: 'buyer' });
+                  return;
+                }
+                setShowUnlock(true);
+              }}
               style={{ ...primaryBtn, background:'#1976D2' }}
             >
               🔓 Unlock Contact — KES 100
@@ -327,7 +335,13 @@ export default function ListingDetailScreen({ listingId, currentFarmer, onClose,
               {creatingThread ? '⏳ Opening chat...' : '💬 Message Seller'}
             </button>
             <button
-              onClick={() => setShowOffer(true)}
+              onClick={() => {
+                if (!currentFarmer?.id) {
+                  setIdentityPrompt({ action: 'make an offer', roleHint: 'buyer' });
+                  return;
+                }
+                setShowOffer(true);
+              }}
               style={{ ...primaryBtn, background:'#2E7D32' }}
             >
               📨 Make Offer
@@ -342,6 +356,22 @@ export default function ListingDetailScreen({ listingId, currentFarmer, onClose,
           ← Back to Marketplace
         </button>
       </div>
+
+      {identityPrompt && (
+        <RequireIdentityModal
+          action={identityPrompt.action}
+          roleHint={identityPrompt.roleHint}
+          onSignIn={() => {
+            setIdentityPrompt(null);
+            onRequireAuth && onRequireAuth('signin');
+          }}
+          onCreate={() => {
+            setIdentityPrompt(null);
+            onRequireAuth && onRequireAuth('create');
+          }}
+          onClose={() => setIdentityPrompt(null)}
+        />
+      )}
 
       {activeThreadId && (
         <ThreadView
