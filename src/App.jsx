@@ -202,6 +202,19 @@ export default function App() {
     : baseProducts;
   const isDemoMode = !hasRealFarmers;
 
+  // Session 6.11h: derive "my live products" count from the marketplace
+  // source (registeredProducts) rather than myFarmer.products (empty after restore)
+  const myLiveProductCount = (() => {
+    if (!myFarmer) return 0;
+    const phone = myFarmer.farmer?.phone;
+    const name = myFarmer.farmer?.fullName;
+    if (!phone && !name) return registeredProducts.length;
+    return registeredProducts.filter(p =>
+      (phone && p.phone && String(p.phone).slice(-9) === String(phone).slice(-9)) ||
+      (name && p.farmer === name)
+    ).length;
+  })();
+
   const filtered = displayProducts.filter(p =>
     (cat === 'All' || p.category === cat || (cat === 'Livestock' && p.isMarketListing)) &&
     (!search || p.name.toLowerCase().includes(search.toLowerCase()) || p.farmer.toLowerCase().includes(search.toLowerCase()))
@@ -405,7 +418,7 @@ export default function App() {
         }}>
           <span style={{fontSize:18}}>✅</span>
           <div style={{flex:1}}>
-            <strong>Registered Farmer</strong> — {myFarmer.products?.length || 0} product{myFarmer.products?.length !== 1 ? 's' : ''} live
+            <strong>Registered Farmer</strong> — {myLiveProductCount} product{myLiveProductCount !== 1 ? 's' : ''} live
           </div>
           <span style={{fontSize:10, opacity:.7}}>
             {myFarmer.payment?.method === 'till' && `🏪 Till ${myFarmer.payment.tillNumber}`}
@@ -534,7 +547,7 @@ export default function App() {
               <div style={{margin:'0 12px 12px', background:'#F0F4F8', borderRadius:12, padding:14, border:'1px solid #E0E0E0'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
                   <strong style={{fontSize:13,color:'#1B5E20'}}>👨‍🌾 Your Farm</strong>
-                  <span style={{fontSize:10,color:'#666'}}>{myFarmer.products?.length || 0} products live</span>
+                  <span style={{fontSize:10,color:'#666'}}>{myLiveProductCount} products live</span>
                 </div>
                 <p style={{fontSize:11,margin:'2px 0',color:'#333'}}>
                   📍 {myFarmer.farmer?.location?.manual || [myFarmer.farmer?.location?.area, myFarmer.farmer?.location?.locality, myFarmer.farmer?.location?.county].filter(Boolean).join(', ') || 'Location not set'}
