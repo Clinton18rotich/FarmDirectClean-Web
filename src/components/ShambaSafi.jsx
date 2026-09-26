@@ -12,6 +12,7 @@ import HealthRecordModal from './HealthRecordModal';
 import SelfServiceOrDispatchModal from './SelfServiceOrDispatchModal';
 import { api } from '../services/api';
 import { normalizeKenyaPhone, isValidKenyaPhone } from '../utils/phone';
+import RequireIdentityModal from './RequireIdentityModal';
 
 const ANIMAL_TYPES = ['Cow', 'Goat', 'Sheep', 'Pig', 'Chicken', 'Camel', 'Donkey', 'Rabbit'];
 const LAND_USES = ['Crop farming', 'Livestock grazing', 'Mixed farming', 'Residential', 'Commercial'];
@@ -20,8 +21,17 @@ const inputStyle = { width:'100%', padding:'14px 16px', borderRadius:10, border:
 const labelStyle = { fontSize:12, fontWeight:'bold', color:'#555', display:'block', marginBottom:4, marginTop:8 };
 const primaryBtn = { width:'100%', padding:16, color:'white', border:'none', borderRadius:25, fontSize:16, fontWeight:'bold', cursor:'pointer', marginTop:8, boxSizing:'border-box' };
 
-export default function ShambaSafi({ onClose, onBrowseMarketplace }) {
+export default function ShambaSafi({ onClose, onBrowseMarketplace, onRequireAuth }) {
   const [activeModule, setActiveModule] = useState(null);
+  const [identityPrompt, setIdentityPrompt] = useState(null);
+
+  // 6.20h: one-tap path to registration for anonymous users
+  const requestFarmerRegistration = () => {
+    setIdentityPrompt({
+      action: 'register as a farmer',
+      roleHint: 'farmer',
+    });
+  };
   const [myFarmer, setMyFarmer] = useState(null);
   const [myLand, setMyLand] = useState([]);
   const [myLivestock, setMyLivestock] = useState([]);
@@ -127,8 +137,8 @@ export default function ShambaSafi({ onClose, onBrowseMarketplace }) {
           <div>
             <button onClick={() => setActiveModule(null)} style={{background:'none',border:'none',color:'#4CAF50',fontWeight:'bold',cursor:'pointer',marginBottom:8,fontSize:14}}>← Back to Modules</button>
 
-            {activeModule === 'land' && <LandModule myFarmer={myFarmer} myLand={myLand} reload={loadAll} />}
-            {activeModule === 'livestock' && <LivestockModule myFarmer={myFarmer} myLivestock={myLivestock} reload={loadAll} onBrowseMarketplace={onBrowseMarketplace} />}
+            {activeModule === 'land' && <LandModule myFarmer={myFarmer} myLand={myLand} reload={loadAll} onRequestRegister={requestFarmerRegistration} />}
+            {activeModule === 'livestock' && <LivestockModule myFarmer={myFarmer} myLivestock={myLivestock} reload={loadAll} onBrowseMarketplace={onBrowseMarketplace} onRequestRegister={requestFarmerRegistration} />}
             {activeModule === 'health' && <VetModule />}
             {activeModule === 'meat' && <VerifyMeatView onBack={() => setActiveModule(null)} />}
             {activeModule === 'slaughterhouse' && <SlaughterhouseModule />}
@@ -140,7 +150,16 @@ export default function ShambaSafi({ onClose, onBrowseMarketplace }) {
         <div style={{background:'#E3F2FD',padding:10,borderRadius:8,marginTop:12,fontSize:11}}>
           <strong>🔐 Blockchain-Lite:</strong> Records hashed locally • Immutable record
         </div>
-      </div>
+      {identityPrompt && (
+        <RequireIdentityModal
+          action={identityPrompt.action}
+          roleHint={identityPrompt.roleHint}
+          onSignIn={() => { setIdentityPrompt(null); onRequireAuth && onRequireAuth('signin'); }}
+          onCreate={() => { setIdentityPrompt(null); onRequireAuth && onRequireAuth('create'); }}
+          onClose={() => setIdentityPrompt(null)}
+        />
+      )}
+    </div>
     </div>
   );
 }
@@ -148,7 +167,7 @@ export default function ShambaSafi({ onClose, onBrowseMarketplace }) {
 // ═══════════════════════════════════════════════════
 // LAND MODULE (unchanged)
 // ═══════════════════════════════════════════════════
-function LandModule({ myFarmer, myLand, reload }) {
+function LandModule({ myFarmer, myLand, reload, onRequestRegister }) {
   const [view, setView] = useState('list');
   const [form, setForm] = useState({
     location: null, titleDeed: '', areaHectares: '', landUse: 'Mixed farming', witnesses: [],
@@ -227,7 +246,17 @@ function LandModule({ myFarmer, myLand, reload }) {
     <div>
       <h4 style={{fontSize:16,marginBottom:8}}>🏠 My Land ({myOwnLand.length})</h4>
       <button onClick={() => setView('form')} style={{...primaryBtn, background:'#4CAF50', marginBottom:12}}>+ Register New Parcel</button>
-      {!myFarmer && <p style={{background:'#FFF8E1',padding:12,borderRadius:10,fontSize:12,color:'#E65100'}}>⚠️ Register as farmer first</p>}
+      {!myFarmer && (
+          <div style={{background:'#FFF8E1',padding:12,borderRadius:10,fontSize:12,color:'#E65100',marginBottom:10}}>
+            <div style={{marginBottom:8}}>⚠️ Register as farmer first</div>
+            <button
+              onClick={onRequestRegister}
+              style={{padding:'8px 16px',borderRadius:20,border:'none',background:'#E65100',color:'white',fontSize:12,fontWeight:'bold',cursor:'pointer'}}
+            >
+              📝 Register as farmer →
+            </button>
+          </div>
+        )}
       {myOwnLand.map(p => (
         <div key={p.id} style={{background:'#F0F9F0',borderRadius:12,padding:14,marginBottom:8,border:'1px solid #A5D6A7'}}>
           <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
@@ -246,7 +275,7 @@ function LandModule({ myFarmer, myLand, reload }) {
 // ═══════════════════════════════════════════════════
 // LIVESTOCK MODULE (UPDATED)
 // ═══════════════════════════════════════════════════
-function LivestockModule({ myFarmer, myLivestock, reload, onBrowseMarketplace }) {
+function LivestockModule({ myFarmer, myLivestock, reload, onBrowseMarketplace, onRequestRegister }) {
   const [view, setView] = useState('list');
 
   // Session 5A: List for sale
@@ -690,7 +719,17 @@ function LivestockModule({ myFarmer, myLivestock, reload, onBrowseMarketplace })
         </button>
       </div>
 
-      {!myFarmer && <p style={{background:'#FFF8E1',padding:12,borderRadius:10,fontSize:12,color:'#E65100'}}>⚠️ Register as farmer first</p>}
+      {!myFarmer && (
+          <div style={{background:'#FFF8E1',padding:12,borderRadius:10,fontSize:12,color:'#E65100',marginBottom:10}}>
+            <div style={{marginBottom:8}}>⚠️ Register as farmer first</div>
+            <button
+              onClick={onRequestRegister}
+              style={{padding:'8px 16px',borderRadius:20,border:'none',background:'#E65100',color:'white',fontSize:12,fontWeight:'bold',cursor:'pointer'}}
+            >
+              📝 Register as farmer →
+            </button>
+          </div>
+        )}
       {displayList.length === 0 && myFarmer && <p style={{textAlign:'center',color:'#999',padding:20,fontSize:13}}>No animals in this category</p>}
 
       {displayList.map(a => {
