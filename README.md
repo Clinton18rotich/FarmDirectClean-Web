@@ -176,6 +176,42 @@ Zero PSP license required — FarmDirect never holds client funds.
 
 ---
 
+## Backup & Restore
+
+The entire database is JSON files in `backend/data/storage/`.
+
+```bash
+# Snapshot (default: keep last 30)
+./scripts/backup.sh
+
+# Custom retention
+FD_BACKUP_KEEP=100 ./scripts/backup.sh
+
+# List available snapshots
+./scripts/restore.sh
+
+# Preview a restore (dry run, writes nothing)
+./scripts/restore.sh latest
+
+# Actually restore
+CONFIRM=1 ./scripts/restore.sh latest
+CONFIRM=1 ./scripts/restore.sh 2026-09-26-164127
+```
+
+Snapshots land in `backups/YYYY-MM-DD-HHMMSS/` (gitignored). The
+`trades.json.critical` copy in each snapshot is a belt-and-braces
+duplicate of the trade ledger.
+
+**After any restore, restart the backend** so it reloads state from disk:
+
+```bash
+pkill -9 -f 'server.js'; sleep 2
+cd backend && nohup node src/server.js > ~/fd-server.log 2>&1 &
+```
+
+
+---
+
 ## API Surface
 
 ```
