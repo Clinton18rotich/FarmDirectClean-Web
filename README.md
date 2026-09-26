@@ -444,9 +444,14 @@ Frontend (market + trades) ✅ Complete — full loop verified 2026-09-24
 Donkey enforcement (Slaughter Ban 2020) ✅ Complete — SMS gate + exemption + traceability
 Role-aware KYC ✅ Complete — 7 roles
 Vet verification (KVB) ✅ Complete — KYCModal role='vet' wired
-Health events (two-tier) 🚧 In progress — Session 6.13
+Health events (two-tier) ✅ Complete — self-reported + vet-verified
+Chat (backend + frontend) ✅ Complete — threads scoped to listings/trades
+Simple login (phone-based) ✅ Complete — /api/auth/lookup + /api/auth/restore
+Free buyer registration ✅ Complete — no fee, delivery address captured
+Multi-role gate (farmer-vet self-service) ✅ Complete
+Privacy masking (meat contact reveal) ✅ Complete
+Google OAuth ⏳ Deferred to 6.20g — needs Google Cloud Console Client ID
 Multi-leg shipment tracking ⏳ Next up — Session 4B
-Real chat ⏳ Planned — Session 6.11
 
 ---
 
