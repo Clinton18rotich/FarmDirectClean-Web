@@ -3,6 +3,7 @@
 // Tiers: 🩺 vet_verified | 🧑‍🌾 self_reported | 👥 community_attested
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
+import DocumentPreviewModal from './documents/DocumentPreviewModal';
 import { resizeImageFile } from '../utils/imageUtils';
 
 const inputStyle = { width:'100%', padding:'12px 14px', borderRadius:10, border:'2px solid #E0E0E0', fontSize:14, marginBottom:8, boxSizing:'border-box', fontFamily:'inherit', color:'#333' };
@@ -86,6 +87,29 @@ export default function HealthRecordModal({ animal, currentFarmer, currentVet, o
 
   const isVet = !!currentVet;
   const vetVerifiedCount = events.filter(e => e.tier === 'vet_verified').length;
+
+  // Session 6.14-a: certificate modal
+  const [certModal, setCertModal] = React.useState({ open: false, title: '', html: '', reference: '' });
+  const [certLoading, setCertLoading] = React.useState(false);
+
+  const openCert = async (evt) => {
+    if (!evt || !animal?.passportId) return;
+    setCertLoading(true);
+    try {
+      const res = await api.shamba.getHealthEventDocument(animal.passportId, evt.id);
+      if (!res.success || !res.html) throw new Error(res.message || 'Failed to render document');
+      setCertModal({
+        open: true,
+        title: `${evt.eventTypeLabel || evt.eventType} Certificate`,
+        html: res.html,
+        reference: res.reference || '',
+      });
+    } catch (err) {
+      alert('Could not load certificate: ' + err.message);
+    } finally {
+      setCertLoading(false);
+    }
+  };
 
   const handlePhoto = async (file) => {
     if (!file) return;
@@ -247,7 +271,7 @@ export default function HealthRecordModal({ animal, currentFarmer, currentVet, o
             {!loading && events.length > 0 && (
               <div style={{ marginTop:14 }}>
                 {events.map(e => (
-                  <EventCard key={e.id} event={e} isVet={isVet} onCountersign={() => countersign(e)} fmtDate={fmtDate} />
+                  <EventCard key={e.id} event={e} isVet={isVet} onCountersign={() => countersign(e)} onPrint={(evt) => openCert(evt)} fmtDate={fmtDate} />
                 ))}
               </div>
             )}
@@ -456,11 +480,19 @@ export default function HealthRecordModal({ animal, currentFarmer, currentVet, o
           </>
         )}
       </div>
+
+      <DocumentPreviewModal
+        open={certModal.open}
+        onClose={() => setCertModal({ open: false, title: '', html: '', reference: '' })}
+        title={certModal.title}
+        htmlContent={certModal.html}
+        reference={certModal.reference}
+      />
     </div>
   );
 }
 
-function EventCard({ event, isVet, onCountersign, fmtDate }) {
+function EventCard({ event, isVet, onCountersign, onPrint, fmtDate }) {
   const meta = TIER_META[event.tier] || TIER_META.self_reported;
   const canCountersign = isVet && event.tier !== 'vet_verified';
 
@@ -515,6 +547,15 @@ function EventCard({ event, isVet, onCountersign, fmtDate }) {
           style={{ marginTop:8, padding:'8px 14px', background:'white', border:'1px solid #2E7D32', color:'#2E7D32', borderRadius:8, fontSize:11, fontWeight:'bold', cursor:'pointer' }}
         >
           ✓ Countersign as vet
+        </button>
+      )}
+
+      {event.tier === 'vet_verified' && onPrint && (
+        <button
+          onClick={() => onPrint(event)}
+          style={{ marginTop:8, marginLeft: canCountersign ? 8 : 0, padding:'8px 14px', background:'#2E7D32', border:'none', color:'white', borderRadius:8, fontSize:11, fontWeight:'bold', cursor:'pointer' }}
+        >
+          📄 Get certificate
         </button>
       )}
     </div>

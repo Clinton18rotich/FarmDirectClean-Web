@@ -251,6 +251,51 @@ router.get('/livestock/:passportId/health-events', (req, res) => {
   }
 });
 
+// Session 6.14-a: printable certificate (HTML) for a health event
+router.get('/livestock/:passportId/health-event/:eventId/document', (req, res) => {
+  try {
+    const healthEvents = require('../services/healthEvents');
+    const shamba = require('../services/shamba');
+    const docTemplates = require('../services/docTemplates');
+
+    const event = healthEvents.getEvent(req.params.eventId);
+    if (!event) return res.status(404).json({ success: false, message: 'Event not found' });
+    if (event.passportId !== req.params.passportId) {
+      return res.status(400).json({ success: false, message: 'Event does not belong to this passport' });
+    }
+
+    // Best-effort animal + owner lookup (non-fatal if missing)
+    let animal = null;
+    let owner = null;
+    try {
+      animal = shamba.getLivestock(req.params.passportId);
+      if (animal?.ownerId) owner = { name: animal.ownerName || animal.ownerId, id: animal.ownerId };
+    } catch { /* ignore */ }
+
+    // Lookup vet record if event was countersigned by a vet
+    let vet = null;
+    try {
+      const vets = require('../services/vet');
+      const verifierId = event.verifiedBy?.userId;
+      if (verifierId && vets.getVetByPhone) {
+        vet = vets.getVetByPhone(verifierId);
+      }
+    } catch { /* ignore */ }
+
+    const result = docTemplates.renderVaccinationCert({ event, animal, owner, vet });
+    if (result.error) return res.status(400).json({ success: false, message: result.error });
+
+    res.json({
+      success: true,
+      reference: result.reference,
+      issuedAt: result.issuedAt,
+      html: result.html,
+    });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
 router.get('/livestock/:passportId/health-event/:eventId', (req, res) => {
   try {
     const healthEvents = require('../services/healthEvents');

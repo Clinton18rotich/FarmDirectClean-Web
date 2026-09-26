@@ -102,6 +102,7 @@ api.shamba = {
   addVaccination: (passportId, data) => request(`/api/shamba/livestock/${passportId}/vaccination`, { method: 'POST', body: data }),
   healthEventTypes: () => request('/api/shamba/health-event-types'),
   recordHealthEvent: (passportId, data) => request(`/api/shamba/livestock/${passportId}/health-event`, { method: 'POST', body: data }),
+  getHealthEventDocument: (passportId, eventId) => request(`/api/shamba/livestock/${passportId}/health-event/${eventId}/document`),
   listHealthEvents: (passportId, filter = {}) => {
     const params = new URLSearchParams(filter).toString();
     return request(`/api/shamba/livestock/${passportId}/health-events${params ? '?' + params : ''}`);
