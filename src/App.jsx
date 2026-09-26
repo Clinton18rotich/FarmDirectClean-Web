@@ -673,7 +673,15 @@ export default function App() {
         />}
         {tab === 2 && <EconomyScreen />}
         {tab === 3 && (rider ? <RiderJobPipeline currentRider={rider} onClose={() => setTab(0)} /> : <DeliveryScreen />)}
-        {tab === 4 && <TrackingScreen />}
+        {tab === 4 && (
+          <TrackingScreen
+            currentUser={currentUser}
+            onSelectTrade={(tradeId) => {
+              setTab(0);
+              setTrackingTradeId(tradeId);
+            }}
+          />
+        )}
         {tab === 5 && <div style={{padding:20,textAlign:'center'}}><h2>📍 Nakuru</h2><span style={{fontSize:80}}>⛅</span><h1 style={{fontSize:56}}>24°C</h1></div>}
         {tab === 6 && <AlertsScreen />}
       </main>
