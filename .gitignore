@@ -38,3 +38,6 @@ start-tunnel.sh
 *.pre-marketplace
 backend/test-*.js
 .session5a-backup/
+
+# Local data backups (B-2)
+backups/
