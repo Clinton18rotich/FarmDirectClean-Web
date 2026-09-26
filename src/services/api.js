@@ -377,6 +377,11 @@ api.trades = {
   get: (id) => request(`/api/trades/${id}`),
   myTrades: (userId, role) => request(`/api/trades/user/${userId}${role ? '?role=' + role : ''}`),
   riderTrades: (riderId) => request(`/api/trades/rider/${riderId}`),
+  // Session 4B — multi-leg shipment tracking
+  getLegs: (id) => request(`/api/trades/${id}/legs`),
+  addLeg: (id, data) => request(`/api/trades/${id}/legs`, { method: 'POST', body: data }),
+  updateLeg: (id, legId, data) => request(`/api/trades/${id}/legs/${legId}`, { method: 'PATCH', body: data }),
+  removeLeg: (id, legId, byRole) => request(`/api/trades/${id}/legs/${legId}`, { method: 'DELETE', body: { byRole } }),
   stats: () => request('/api/trades/stats'),
 };
 // Chat (Session 6.11)

@@ -2,6 +2,7 @@
 // Session 5B-7: Trade lifecycle view — role-aware, timeline, release code, actions.
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
+import ShipmentTracker from './ShipmentTracker';
 
 const card = { background:'white', border:'1px solid #E0E0E0', borderRadius:12, padding:14, marginBottom:12 };
 const row = { display:'flex', justifyContent:'space-between', fontSize:13, padding:'6px 0' };
@@ -135,11 +136,18 @@ export default function TradeTrackingScreen({ tradeId, currentFarmer, onClose, o
           </div>
         )}
 
-        {/* Timeline */}
+        {/* Timeline — macro lifecycle */}
         <div style={card}>
           <p style={sectionTitle}>📊 Progress</p>
           <Timeline trade={trade} />
         </div>
+
+        {/* Session 4B: multi-leg shipment tracker — micro journey */}
+        <ShipmentTracker
+          trade={trade}
+          currentUser={currentFarmer}
+          onLegsChanged={() => load(true)}
+        />
 
         {/* Release code — buyer only */}
         {canSeeCode && trade.releaseCode && (
